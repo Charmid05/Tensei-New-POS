@@ -1,0 +1,1040 @@
+---
+globs: *.tsx,*.ts,*.jsx,*.js
+description: Complete React component patterns, hooks, and state management with shadcn/ui for POS System
+---
+
+# ⚛️ React Component Patterns & Best Practices
+
+## 🏗️ Component Architecture
+
+### shadcn/ui Base Components Pattern
+```typescript
+// Follow the established shadcn/ui pattern from components/ui/
+import * as React from 'react'
+import { cn } from '@/lib/utils'
+import { cva, type VariantProps } from 'class-variance-authority'
+
+// ✅ CORRECT: Use cva for variant-based styling
+const buttonVariants = cva(
+  "inline-flex items-center justify-center rounded-md font-medium transition-colors",
+  {
+    variants: {
+      variant: {
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        outline: "border border-input bg-background hover:bg-accent",
+        ghost: "hover:bg-accent hover:text-accent-foreground",
+      },
+      size: {
+        default: "h-10 px-4 py-2",
+        sm: "h-9 px-3",
+        lg: "h-11 px-8",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+      size: "default",
+    },
+  }
+)
+
+interface ButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement>,
+    VariantProps<typeof buttonVariants> {
+  asChild?: boolean
+}
+
+// ✅ CORRECT: Always use forwardRef for reusable components
+const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
+  ({ className, variant, size, asChild = false, ...props }, ref) => {
+    return (
+      <button
+        ref={ref}
+        className={cn(buttonVariants({ variant, size, className }))}
+        {...props}
+      />
+    )
+  }
+)
+Button.displayName = "Button"
+```
+
+### Business Component Pattern
+```typescript
+// POS-specific business components
+import { useState, useCallback } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
+import apiClient from '@/api/client'
+import type { Product, CartItem } from '@/types'
+
+interface ProductCardProps {
+  product: Product
+  onSelect: (product: Product) => void
+  isSelected?: boolean
+  isInCart?: boolean
+  cartQuantity?: number
+  className?: string
+}
+
+// ✅ CORRECT: Typed component with proper props interface
+export const ProductCard: React.FC<ProductCardProps> = ({
+  product,
+  onSelect,
+  isSelected = false,
+  isInCart = false,
+  cartQuantity = 0,
+  className
+}) => {
+  // ✅ CORRECT: Use useCallback for event handlers
+  const handleSelect = useCallback(() => {
+    onSelect(product)
+  }, [product, onSelect])
+
+  // ✅ CORRECT: Early returns for loading/error states
+  if (!product.is_available) {
+    return (
+      <Card className={cn("opacity-50", className)}>
+        <CardContent className="p-4 text-center">
+          <p className="text-muted-foreground">Unavailable</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  return (
+    <Card 
+      className={cn(
+        "cursor-pointer transition-all hover:shadow-md",
+        isSelected && "ring-2 ring-primary",
+        className
+      )}
+      onClick={handleSelect}
+    >
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">{product.name}</CardTitle>
+          {isInCart && (
+            <Badge variant="secondary">{cartQuantity}</Badge>
+          )}
+        </div>
+      </CardHeader>
+      <CardContent>
+        <p className="text-sm text-muted-foreground mb-2">
+          {product.description}
+        </p>
+        <p className="text-xl font-bold">${product.price.toFixed(2)}</p>
+      </CardContent>
+    </Card>
+  )
+}
+```
+
+## 🎣 Custom Hooks Patterns
+
+### Data Fetching Hook
+```typescript
+// Custom hook for API data fetching
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { toastHelpers } from '@/lib/toast-helpers'
+import apiClient from '@/api/client'
+import type { Product, CreateProductRequest } from '@/types'
+
+export const useProducts = (categoryId?: string) => {
+  return useQuery({
+    queryKey: ['products', categoryId],
+    queryFn: () => apiClient.getProducts({ category_id: categoryId }),
+    select: (data) => data.data || [], // Transform response
+    staleTime: 5 * 60 * 1000, // 5 minutes
+  })
+}
+
+export const useCreateProduct = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (product: CreateProductRequest) => 
+      apiClient.createProduct(product),
+    onSuccess: (data) => {
+      // Invalidate and refetch
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      toastHelpers.success('Product created successfully!')
+    },
+    onError: (error: any) => {
+      toastHelpers.error(`Failed to create product: ${error.message}`)
+    },
+  })
+}
+```
+
+### Business Logic Hook (Shopping Cart)
+```typescript
+// Custom hook for cart management
+import { useState, useCallback, useMemo } from 'react'
+import type { Product, CartItem } from '@/types'
+
+export const useCart = () => {
+  const [items, setItems] = useState<CartItem[]>([])
+
+  // ✅ CORRECT: Memoized calculations
+  const total = useMemo(() => {
+    return items.reduce((sum, item) => sum + (item.product.price * item.quantity), 0)
+  }, [items])
+
+  const itemCount = useMemo(() => {
+    return items.reduce((count, item) => count + item.quantity, 0)
+  }, [items])
+
+  // ✅ CORRECT: Optimized with useCallback
+  const addItem = useCallback((product: Product, quantity = 1) => {
+    setItems(prevItems => {
+      const existingItem = prevItems.find(item => item.product.id === product.id)
+      
+      if (existingItem) {
+        return prevItems.map(item =>
+          item.product.id === product.id
+            ? { ...item, quantity: item.quantity + quantity }
+            : item
+        )
+      }
+      
+      return [...prevItems, { product, quantity, subtotal: product.price * quantity }]
+    })
+  }, [])
+
+  const updateQuantity = useCallback((productId: string, quantity: number) => {
+    if (quantity <= 0) {
+      removeItem(productId)
+      return
+    }
+
+    setItems(prevItems =>
+      prevItems.map(item =>
+        item.product.id === productId
+          ? { ...item, quantity, subtotal: item.product.price * quantity }
+          : item
+      )
+    )
+  }, [])
+
+  const removeItem = useCallback((productId: string) => {
+    setItems(prevItems => prevItems.filter(item => item.product.id !== productId))
+  }, [])
+
+  const clearCart = useCallback(() => {
+    setItems([])
+  }, [])
+
+  return {
+    items,
+    total,
+    itemCount,
+    addItem,
+    updateQuantity,
+    removeItem,
+    clearCart,
+    isEmpty: items.length === 0,
+  }
+}
+```
+
+## 📝 Form Handling Patterns
+
+### React Hook Form + Zod Integration
+```typescript
+// Form with validation using React Hook Form + Zod
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+
+// ✅ CORRECT: Define Zod schema with proper validation
+const productSchema = z.object({
+  name: z.string().min(1, "Product name is required").max(100),
+  price: z.number().min(0.01, "Price must be greater than 0"),
+  category_id: z.string().min(1, "Category is required"),
+  description: z.string().optional(),
+  is_available: z.boolean().default(true),
+})
+
+type ProductFormData = z.infer<typeof productSchema>
+
+interface ProductFormProps {
+  onSubmit: (data: ProductFormData) => void
+  defaultValues?: Partial<ProductFormData>
+  isLoading?: boolean
+}
+
+export const ProductForm: React.FC<ProductFormProps> = ({
+  onSubmit,
+  defaultValues,
+  isLoading = false
+}) => {
+  const form = useForm<ProductFormData>({
+    resolver: zodResolver(productSchema),
+    defaultValues: {
+      name: '',
+      price: 0,
+      category_id: '',
+      description: '',
+      is_available: true,
+      ...defaultValues,
+    },
+  })
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <FormField
+          control={form.control}
+          name="name"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Product Name</FormLabel>
+              <FormControl>
+                <Input placeholder="Enter product name" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="price"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Price</FormLabel>
+              <FormControl>
+                <Input 
+                  type="number" 
+                  step="0.01" 
+                  placeholder="0.00"
+                  {...field}
+                  onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="category_id"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Category</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a category" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="burgers">Burgers</SelectItem>
+                  <SelectItem value="drinks">Drinks</SelectItem>
+                  <SelectItem value="sides">Sides</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <Button type="submit" disabled={isLoading} className="w-full">
+          {isLoading ? 'Creating...' : 'Create Product'}
+        </Button>
+      </form>
+    </Form>
+  )
+}
+```
+
+### Reusable Form Components
+```typescript
+// Generic form field wrapper for consistent styling
+interface FormFieldWrapperProps<T extends FieldValues> {
+  control: Control<T>
+  name: FieldPath<T>
+  label: string
+  description?: string
+  required?: boolean
+  children: React.ReactNode
+}
+
+export function FormFieldWrapper<T extends FieldValues>({
+  control,
+  name,
+  label,
+  description,
+  required = false,
+  children,
+}: FormFieldWrapperProps<T>) {
+  return (
+    <FormField
+      control={control}
+      name={name}
+      render={() => (
+        <FormItem>
+          <FormLabel>
+            {label}
+            {required && <span className="text-destructive ml-1">*</span>}
+          </FormLabel>
+          <FormControl>{children}</FormControl>
+          {description && <FormDescription>{description}</FormDescription>}
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  )
+}
+```
+
+## 🍳 Enhanced Kitchen Component Patterns
+
+### As-Ready Service Workflow Components
+```typescript
+// Enhanced kitchen interface with individual item tracking
+import React, { useState, useCallback, useEffect } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { CheckCircle } from 'lucide-react'
+import { cn } from '@/lib/utils'
+
+interface EnhancedKitchenOrderProps {
+  order: Order
+  onItemStatusUpdate: (orderId: string, itemId: string, status: ItemStatus) => void
+  onItemServe: (orderId: string, itemId: string) => void
+  soundEnabled: boolean
+  volume: number
+}
+
+// ✅ CORRECT: Enhanced kitchen order card with as-ready service
+export const EnhancedKitchenOrderCard: React.FC<EnhancedKitchenOrderProps> = ({
+  order,
+  onItemStatusUpdate,
+  onItemServe,
+  soundEnabled,
+  volume
+}) => {
+  const [checkedItems, setCheckedItems] = useState<Set<string>>(new Set())
+
+  // Calculate progress with individual item tracking
+  const displayItems = order.items || []
+  const totalItems = displayItems.length
+  const readyItems = checkedItems.size
+  const servedItems = displayItems.filter(item => item.status === 'served').length
+  const progress = totalItems > 0 ? ((readyItems + servedItems) / totalItems) * 100 : 0
+
+  // ✅ CORRECT: Individual item status management
+  const toggleItem = useCallback((itemId: string) => {
+    setCheckedItems(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(itemId)) {
+        newSet.delete(itemId)
+        onItemStatusUpdate(order.id, itemId, 'preparing')
+      } else {
+        newSet.add(itemId)
+        onItemStatusUpdate(order.id, itemId, 'ready')
+        
+        // Play ready sound notification
+        if (soundEnabled) {
+          playReadySound(volume)
+        }
+      }
+      return newSet
+    })
+  }, [order.id, onItemStatusUpdate, soundEnabled, volume])
+
+  // ✅ CORRECT: Individual item serving
+  const handleItemServe = useCallback((itemId: string, itemName: string) => {
+    onItemServe(order.id, itemId)
+    
+    // Play served sound notification (distinct from ready)
+    if (soundEnabled) {
+      playServedSound(volume)
+    }
+    
+    // Remove from checked items
+    setCheckedItems(prev => {
+      const newSet = new Set(prev)
+      newSet.delete(itemId)
+      return newSet
+    })
+  }, [order.id, onItemServe, soundEnabled, volume])
+
+  // Sound notification functions
+  const playReadySound = (volume: number) => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+
+      oscillator.frequency.setValueAtTime(1200, audioContext.currentTime) // 1200Hz for ready
+      gainNode.gain.setValueAtTime(volume * 0.3, audioContext.currentTime)
+
+      oscillator.start()
+      oscillator.stop(audioContext.currentTime + 0.3)
+    } catch (error) {
+      console.log('Sound notification failed:', error)
+    }
+  }
+
+  const playServedSound = (volume: number) => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+
+      oscillator.frequency.setValueAtTime(1400, audioContext.currentTime) // 1400Hz for served
+      gainNode.gain.setValueAtTime(volume * 0.2, audioContext.currentTime)
+
+      oscillator.start()
+      oscillator.stop(audioContext.currentTime + 0.2)
+    } catch (error) {
+      console.log('Sound notification failed:', error)
+    }
+  }
+
+  return (
+    <Card className="mb-6 border-2 border-blue-200 bg-white shadow-lg">
+      <CardHeader className="pb-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-xl font-bold text-gray-900">
+            Order #{order.order_number}
+          </CardTitle>
+          <Badge variant="outline" className="text-sm">
+            {order.order_type === 'dine_in' ? `Table ${order.table?.table_number}` : 'Takeaway'}
+          </Badge>
+        </div>
+        
+        {/* Enhanced progress tracking */}
+        <div className="mt-3">
+          <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
+            <span>Progress</span>
+            <span>{readyItems} ready • {servedItems} served • {totalItems - readyItems - servedItems} cooking ({Math.round(progress)}% complete)</span>
+          </div>
+          <div className="w-full bg-gray-200 rounded-full h-2">
+            <div 
+              className="bg-green-500 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent>
+        <div className="space-y-3">
+          {displayItems.map((item, index) => {
+            const isServed = item.status === 'served'
+            const isReady = checkedItems.has(item.id)
+
+            return (
+              <div key={item.id} className={cn(
+                "flex items-start space-x-4 p-4 rounded-lg border-2 transition-colors",
+                isServed ? "bg-gray-50 border-gray-300 opacity-75" : "bg-white hover:border-blue-200"
+              )}>
+                {/* Item checkbox */}
+                <button
+                  onClick={() => !isServed && toggleItem(item.id)}
+                  disabled={isServed}
+                  className={cn(
+                    "w-8 h-8 rounded-lg border-2 flex items-center justify-center transition-all mt-1 flex-shrink-0",
+                    isServed
+                      ? "bg-gray-400 border-gray-400 text-white cursor-not-allowed"
+                      : isReady
+                        ? "bg-green-500 border-green-500 text-white shadow-lg"
+                        : "border-gray-300 hover:border-green-400 hover:bg-green-50"
+                  )}
+                >
+                  {(isReady || isServed) && <CheckCircle className="w-5 h-5" />}
+                </button>
+
+                <div className="flex-1 min-w-0">
+                  <div className={cn(
+                    "font-semibold text-lg mb-2",
+                    isServed ? "line-through text-gray-500" : isReady && "line-through text-muted-foreground"
+                  )}>
+                    {item.quantity}x {item.product?.name || `Item ${index + 1}`}
+                    {isServed && <span className="ml-2 text-xs bg-gray-200 text-gray-700 px-2 py-1 rounded">SERVED</span>}
+                  </div>
+
+                  {/* Special instructions */}
+                  {item.special_instructions && (
+                    <div className="text-sm text-orange-600 bg-orange-50 px-2 py-1 rounded mb-2">
+                      Note: {item.special_instructions}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between mt-2">
+                    {/* Status indicator */}
+                    <div className={cn(
+                      "text-xs font-medium px-2 py-1 rounded-full",
+                      isServed
+                        ? "bg-gray-100 text-gray-600"
+                        : isReady
+                          ? "bg-green-100 text-green-800"
+                          : "bg-orange-100 text-orange-800"
+                    )}>
+                      {isServed ? '🍽️ Served' : isReady ? '✅ Ready' : '🍳 Cooking'}
+                    </div>
+
+                    {/* Individual serve button */}
+                    {isReady && !isServed && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-6 px-2 text-xs bg-blue-50 hover:bg-blue-100 border-blue-300"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          handleItemServe(item.id, item.product?.name || 'Item')
+                        }}
+                      >
+                        🍽️ Serve Now
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+```
+
+### Sound Notification System
+```typescript
+// Sound notification service for kitchen operations
+class KitchenSoundService {
+  private audioContext: AudioContext | null = null
+  private enabled: boolean = true
+  private volume: number = 0.5
+
+  async initialize(): Promise<void> {
+    try {
+      this.audioContext = new (window.AudioContext || (window as any).webkitAudioContext)()
+    } catch (error) {
+      console.warn('Audio context not available:', error)
+    }
+  }
+
+  // ✅ CORRECT: Different sounds for different kitchen events
+  playNewOrderSound(): void {
+    this.playTone(800, 0.5, this.volume * 0.4) // 800Hz for new orders
+  }
+
+  playAllReadySound(): void {
+    this.playTone(1200, 0.3, this.volume * 0.3) // 1200Hz for all items ready
+  }
+
+  playItemServedSound(): void {
+    this.playTone(1400, 0.2, this.volume * 0.2) // 1400Hz for item served
+  }
+
+  private playTone(frequency: number, duration: number, volume: number): void {
+    if (!this.enabled || !this.audioContext) return
+
+    try {
+      const oscillator = this.audioContext.createOscillator()
+      const gainNode = this.audioContext.createGain()
+
+      oscillator.connect(gainNode)
+      gainNode.connect(this.audioContext.destination)
+
+      oscillator.frequency.setValueAtTime(frequency, this.audioContext.currentTime)
+      gainNode.gain.setValueAtTime(volume, this.audioContext.currentTime)
+
+      oscillator.start()
+      oscillator.stop(this.audioContext.currentTime + duration)
+    } catch (error) {
+      console.log('Sound playback failed:', error)
+    }
+  }
+
+  setEnabled(enabled: boolean): void {
+    this.enabled = enabled
+  }
+
+  setVolume(volume: number): void {
+    this.volume = Math.max(0, Math.min(1, volume))
+  }
+}
+```
+
+## 🎭 Role-Based Component Patterns
+
+### Role-Specific Interface Components
+```typescript
+// Role-based component rendering
+import { User } from '@/types'
+
+interface RoleBasedLayoutProps {
+  user: User
+}
+
+// ✅ CORRECT: Role-based component switching
+export const RoleBasedLayout: React.FC<RoleBasedLayoutProps> = ({ user }) => {
+  // Admin gets access to all interfaces
+  if (user.role === 'admin') {
+    return <AdminLayout user={user} />
+  }
+  
+  // Role-specific interfaces
+  switch (user.role) {
+    case 'server':
+      return <ServerInterface user={user} />
+    case 'counter':
+      return <CounterInterface user={user} />
+    case 'kitchen':
+      return <NewEnhancedKitchenLayout user={user} /> // Enhanced with as-ready service
+    default:
+      return <POSLayout user={user} />
+  }
+}
+
+// Role-based feature flags
+interface FeatureGateProps {
+  allowedRoles: string[]
+  userRole: string
+  children: React.ReactNode
+  fallback?: React.ReactNode
+}
+
+export const FeatureGate: React.FC<FeatureGateProps> = ({
+  allowedRoles,
+  userRole,
+  children,
+  fallback = null
+}) => {
+  if (allowedRoles.includes(userRole)) {
+    return <>{children}</>
+  }
+  
+  return <>{fallback}</>
+}
+
+// Usage in components
+<FeatureGate allowedRoles={['admin', 'manager']} userRole={user.role}>
+  <AdminReportsButton />
+</FeatureGate>
+```
+
+## 🎨 Styling & UI Patterns
+
+### Conditional Styling with cn()
+```typescript
+// ✅ CORRECT: Use cn() utility for conditional classes
+import { cn } from '@/lib/utils'
+
+const OrderCard = ({ order, isSelected, status }) => {
+  return (
+    <Card className={cn(
+      "transition-all duration-200",
+      isSelected && "ring-2 ring-primary",
+      status === 'urgent' && "border-destructive",
+      status === 'completed' && "opacity-75"
+    )}>
+      {/* Content */}
+    </Card>
+  )
+}
+```
+
+### Status-Based Styling
+```typescript
+// Status badge utility
+const getStatusVariant = (status: string) => {
+  const variants = {
+    pending: 'secondary',
+    confirmed: 'default', 
+    preparing: 'warning',
+    ready: 'success',
+    served: 'outline',
+    completed: 'success',
+    cancelled: 'destructive',
+  } as const
+
+  return variants[status] || 'secondary'
+}
+
+// Usage
+<Badge variant={getStatusVariant(order.status)}>
+  {order.status}
+</Badge>
+```
+
+## ⚡ Performance Optimization Patterns
+
+### React.memo for Expensive Components
+```typescript
+// ✅ CORRECT: Memo for components with expensive renders
+export const ProductGrid = React.memo<ProductGridProps>(({ 
+  products, 
+  onProductSelect,
+  selectedProducts 
+}) => {
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      {products.map(product => (
+        <ProductCard
+          key={product.id}
+          product={product}
+          onSelect={onProductSelect}
+          isSelected={selectedProducts.includes(product.id)}
+        />
+      ))}
+    </div>
+  )
+}, (prevProps, nextProps) => {
+  // Custom comparison for optimization
+  return (
+    prevProps.products.length === nextProps.products.length &&
+    prevProps.selectedProducts.length === nextProps.selectedProducts.length
+  )
+})
+```
+
+### Virtualization for Large Lists
+```typescript
+// For large product catalogs or order lists
+import { FixedSizeList as List } from 'react-window'
+
+const VirtualizedProductList = ({ products, onSelect }) => {
+  const Row = ({ index, style }) => (
+    <div style={style}>
+      <ProductCard 
+        product={products[index]}
+        onSelect={onSelect}
+      />
+    </div>
+  )
+
+  return (
+    <List
+      height={600}
+      itemCount={products.length}
+      itemSize={120}
+      width="100%"
+    >
+      {Row}
+    </List>
+  )
+}
+```
+
+## 🔄 State Management Patterns
+
+### Optimistic Updates
+```typescript
+// Optimistic UI updates for better UX
+const useOptimisticOrderStatus = () => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ orderId, status }) => 
+      apiClient.updateOrderStatus(orderId, status),
+    
+    onMutate: async ({ orderId, status }) => {
+      // Cancel outgoing refetches
+      await queryClient.cancelQueries({ queryKey: ['orders'] })
+
+      // Snapshot previous value
+      const previousOrders = queryClient.getQueryData(['orders'])
+
+      // Optimistically update
+      queryClient.setQueryData(['orders'], (old: any) =>
+        old?.map((order: any) =>
+          order.id === orderId ? { ...order, status } : order
+        )
+      )
+
+      return { previousOrders }
+    },
+    
+    onError: (err, variables, context) => {
+      // Rollback on error
+      if (context?.previousOrders) {
+        queryClient.setQueryData(['orders'], context.previousOrders)
+      }
+      toastHelpers.error('Failed to update order status')
+    },
+    
+    onSettled: () => {
+      // Refetch to ensure consistency
+      queryClient.invalidateQueries({ queryKey: ['orders'] })
+    },
+  })
+}
+```
+
+## 🎯 Error Handling Patterns
+
+### Error Boundaries
+```typescript
+// Error boundary for catching component errors
+class OrderErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Order component error:', error, errorInfo)
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <Card className="p-6 text-center">
+          <CardHeader>
+            <CardTitle className="text-destructive">Something went wrong</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-muted-foreground mb-4">
+              We encountered an error while processing your order.
+            </p>
+            <Button 
+              onClick={() => this.setState({ hasError: false, error: null })}
+              variant="outline"
+            >
+              Try Again
+            </Button>
+          </CardContent>
+        </Card>
+      )
+    }
+
+    return this.props.children
+  }
+}
+```
+
+### Loading States
+```typescript
+// Consistent loading patterns
+const LoadingStates = {
+  Spinner: () => (
+    <div className="flex items-center justify-center p-4">
+      <Loader2 className="h-6 w-6 animate-spin" />
+    </div>
+  ),
+  
+  Skeleton: () => (
+    <div className="space-y-3">
+      <div className="h-4 bg-muted animate-pulse rounded" />
+      <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
+    </div>
+  ),
+  
+  Button: ({ isLoading, children, ...props }) => (
+    <Button disabled={isLoading} {...props}>
+      {isLoading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
+      {children}
+    </Button>
+  ),
+}
+```
+
+## 🛠️ Development Patterns
+
+### Component Organization
+```typescript
+// ✅ CORRECT: Well-organized component file
+// ProductCard/index.tsx
+export { ProductCard } from './ProductCard'
+export type { ProductCardProps } from './ProductCard'
+
+// ProductCard/ProductCard.tsx
+import { memo, useCallback } from 'react'
+// ... imports
+
+interface ProductCardProps {
+  // ... props
+}
+
+export const ProductCard: React.FC<ProductCardProps> = memo(({
+  // ... implementation
+}))
+
+// ProductCard/ProductCard.stories.tsx (if using Storybook)
+export default {
+  title: 'Components/ProductCard',
+  component: ProductCard,
+}
+
+// ProductCard/ProductCard.test.tsx
+describe('ProductCard', () => {
+  // ... tests
+})
+```
+
+### Type Safety Best Practices
+```typescript
+// ✅ CORRECT: Strict typing throughout
+import type { Product, User, Order } from '@/types'
+
+// Generic component with proper constraints
+interface DataTableProps<T> {
+  data: T[]
+  columns: Array<{
+    key: keyof T
+    header: string
+    render?: (value: T[keyof T], row: T) => React.ReactNode
+  }>
+  onRowClick?: (row: T) => void
+}
+
+export function DataTable<T extends Record<string, any>>({
+  data,
+  columns,
+  onRowClick
+}: DataTableProps<T>) {
+  // Implementation with full type safety
+}
+```
+
+## 🚀 Development Commands & Tools
+
+### Essential Commands
+```bash
+# Component development
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run type-check   # TypeScript checking
+
+# Quality assurance  
+npm run lint         # ESLint checking
+npm run format       # Prettier formatting
+npm run test         # Run component tests
+
+# Component generation (if using generator)
+npm run generate:component ProductCard
+```
+
+### Recommended VS Code Extensions
+- **ES7+ React/Redux/React-Native snippets**
+- **Auto Rename Tag**
+- **Bracket Pair Colorizer**
+- **Tailwind CSS IntelliSense**
+- **TypeScript Importer**
+- **React Hook Form DevTools**

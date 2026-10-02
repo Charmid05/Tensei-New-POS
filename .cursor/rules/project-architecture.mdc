@@ -1,0 +1,215 @@
+---
+alwaysApply: true
+---
+
+# 🍽️ POS System - Complete Architecture Guide
+
+## 🎯 Project Overview
+
+This is a **modern, enterprise-grade Point of Sale system** built with cutting-edge technologies:
+
+### 🏗️ Technology Stack
+- **Backend:** Golang 1.21+ + Gin framework + PostgreSQL with optimized raw SQL
+- **Frontend:** React 18.3+ + TanStack Start + TypeScript 5.6+ + Tailwind CSS + shadcn/ui
+- **Database:** PostgreSQL 15 with comprehensive schema, indexes, and constraints
+- **Infrastructure:** Docker containers with multi-stage builds and Docker Compose orchestration
+- **Authentication:** JWT-based auth with role-based access control (RBAC)
+
+### 🚀 Core Business Features
+- **Multi-Role Support:** Admin, Manager, Server, Counter, Kitchen interfaces
+- **Complete Order Lifecycle:** Creation → Kitchen → Payment → Completion
+- **Real-time Updates:** WebSocket-like updates across all interfaces
+- **Advanced Admin Tables:** Professional data tables with sorting, filtering, pagination
+- **Payment Processing:** Multi-step payment flow with receipt generation
+- **Kitchen Display System:** Real-time order preparation workflow
+- **Table Management:** Advanced seating and table assignment system
+
+## 📁 Project Structure
+
+### 🏠 Root Level Files
+- [Makefile](mdc:Makefile) - **PRIMARY DEV TOOL** - All development commands (`make dev`, `make backup`, etc.)
+- [docker-compose.dev.yml](mdc:docker-compose.dev.yml) - Development environment with hot reloading
+- [docker-compose.yml](mdc:docker-compose.yml) - Production orchestration
+- [README.md](mdc:README.md) - Complete project documentation with screenshots
+- [ROLE_BASED_IMPLEMENTATION.md](mdc:ROLE_BASED_IMPLEMENTATION.md) - Role system implementation guide
+
+### 🔧 Backend Structure (`backend/`)
+- [main.go](mdc:backend/main.go) - Application entry point, CORS, middleware setup
+- [go.mod](mdc:backend/go.mod) - Go 1.21+ dependencies (Gin, PostgreSQL driver, JWT)
+- [Dockerfile](mdc:backend/Dockerfile) + [Dockerfile.dev](mdc:backend/Dockerfile.dev) - Multi-stage container builds
+- **`internal/`** - Clean Go architecture following best practices:
+  - **[api/routes.go](mdc:backend/internal/api/routes.go)** - RESTful API route definitions with role-based grouping
+  - **[models/models.go](mdc:backend/internal/models/models.go)** - Complete data models, DTOs, and API response structures
+  - **[database/connection.go](mdc:backend/internal/database/connection.go)** - PostgreSQL connection with pooling
+  - **[middleware/auth.go](mdc:backend/internal/middleware/auth.go)** - JWT authentication + RBAC middleware
+  - **`handlers/`** - Domain-specific HTTP handlers:
+    - [auth.go](mdc:backend/internal/handlers/auth.go) - Login, logout, user management
+    - [orders.go](mdc:backend/internal/handlers/orders.go) - Complete order lifecycle management
+    - [products.go](mdc:backend/internal/handlers/products.go) - Menu and category management
+    - [tables.go](mdc:backend/internal/handlers/tables.go) - Table and seating management
+    - [payments.go](mdc:backend/internal/handlers/payments.go) - Payment processing and history
+
+### ⚛️ Frontend Structure (`frontend/`)
+- [package.json](mdc:frontend/package.json) - React 18.3+, TypeScript 5.6+, TanStack ecosystem
+- [vite.config.ts](mdc:frontend/vite.config.ts) - Vite + TanStack Start configuration
+- [tailwind.config.js](mdc:frontend/tailwind.config.js) - Tailwind CSS + shadcn/ui theme configuration
+- [Dockerfile](mdc:frontend/Dockerfile) + [Dockerfile.dev](mdc:frontend/Dockerfile.dev) - Nginx + Node.js containers
+- **`src/`** - Modern React application structure:
+  - **[main.tsx](mdc:frontend/src/main.tsx)** - React 18 entry point with StrictMode
+  - **[index.css](mdc:frontend/src/index.css)** - Global styles and CSS variables
+  - **Core Architecture:**
+    - **[types/index.ts](mdc:frontend/src/types/index.ts)** - Comprehensive TypeScript definitions
+    - **[api/client.ts](mdc:frontend/src/api/client.ts)** - Axios-based API client with interceptors
+    - **[lib/utils.ts](mdc:frontend/src/lib/utils.ts)** - Utility functions (cn, date formatters, etc.)
+    - **[lib/form-schemas.ts](mdc:frontend/src/lib/form-schemas.ts)** - Zod validation schemas
+  - **UI Components:**
+    - **[components/ui/](mdc:frontend/src/components/ui/)** - shadcn/ui base components (Button, Card, Table, etc.)
+    - **[components/forms/](mdc:frontend/src/components/forms/)** - Reusable form components with validation
+  - **Business Components:**
+    - **[components/admin/](mdc:frontend/src/components/admin/)** - Admin dashboard and management interfaces
+    - **[components/pos/](mdc:frontend/src/components/pos/)** - POS interface components (cart, product grid, etc.)
+    - **[components/kitchen/](mdc:frontend/src/components/kitchen/)** - Kitchen display system components
+    - **[components/server/](mdc:frontend/src/components/server/)** - Server-specific interface components
+    - **[components/counter/](mdc:frontend/src/components/counter/)** - Counter/checkout interface components
+  - **Routing:**
+    - **[routes/](mdc:frontend/src/routes/)** - TanStack Start file-based routing
+    - **[routeTree.gen.ts](mdc:frontend/src/routeTree.gen.ts)** - Auto-generated route tree
+  - **Hooks & State:**
+    - **[hooks/](mdc:frontend/src/hooks/)** - Custom React hooks (pagination, toasts, keyboard shortcuts)
+
+### 🗄️ Database Structure (`database/`)
+- **[init/01_schema.sql](mdc:database/init/01_schema.sql)** - Complete PostgreSQL schema:
+  - Users with role-based access (admin, manager, server, counter, kitchen)
+  - Products and categories with inventory tracking
+  - Orders with full lifecycle management
+  - Dining tables with occupancy status
+  - Payments with multiple payment methods
+  - Order status history for audit trails
+  - Optimized indexes for performance
+- **[init/02_seed_data.sql](mdc:database/init/02_seed_data.sql)** - Demo data for all roles and complete workflows
+
+### 🛠️ Scripts & Automation (`scripts/`)
+- **[create-admin.sh](mdc:scripts/create-admin.sh)** - Interactive super admin creation with validation
+- **[backup.sh](mdc:scripts/backup.sh)** - Production-grade system backup (database + files)
+- **[restore.sh](mdc:scripts/restore.sh)** - Interactive backup restoration with safety checks
+- **[db-reset.sh](mdc:scripts/db-reset.sh)** - Safe database reset with fresh schema and seed data
+- **[remove-data.sh](mdc:scripts/remove-data.sh)** - Destructive data removal with multiple confirmations
+
+### 📚 Documentation (`docs/`)
+- **[PRD.md](mdc:docs/PRD.md)** - Complete Product Requirements Document with feature specifications
+- **[TODO.md](mdc:docs/TODO.md)** - Detailed project roadmap and development phases
+- **[README.md](mdc:README.md)** - Beautiful project documentation with screenshots and quick start
+
+### ⚙️ Development Infrastructure
+- **[Makefile](mdc:Makefile)** - **ESSENTIAL** - All development operations (`make help` for full list)
+- **[.gitignore](mdc:.gitignore)** - Comprehensive ignore patterns for all environments
+- **Docker Configuration:**
+  - Development: [docker-compose.dev.yml](mdc:docker-compose.dev.yml) with hot reloading
+  - Production: [docker-compose.yml](mdc:docker-compose.yml) with optimized builds
+
+## 🎯 Core Architectural Principles
+
+### 1. 🚀 API-First Design
+- **RESTful APIs** - All business logic exposed through clean REST endpoints
+- **Client-Server Separation** - Frontend consumes APIs, backend serves data
+- **Consistent Response Format** - Standardized JSON responses with success/error patterns
+- **Versioned APIs** - `/api/v1/` prefix for future-proofing
+
+### 2. 🔒 Type Safety & Data Integrity
+- **End-to-End TypeScript** - Frontend to backend interface consistency
+- **Database Constraints** - PostgreSQL constraints, foreign keys, check constraints
+- **Zod Validation** - Runtime validation for forms and API requests
+- **Strongly-Typed Models** - Matching data structures across all layers
+
+### 3. 🛡️ Security-First Architecture
+- **JWT Authentication** - Stateless authentication with proper expiration
+- **Role-Based Access Control (RBAC)** - Granular permissions per user role
+- **SQL Injection Prevention** - Parameterized queries throughout
+- **CORS Configuration** - Proper cross-origin resource sharing
+- **Input Validation** - Multi-layer validation (frontend + backend + database)
+
+### 4. ⚡ Performance & Scalability
+- **Database Optimization:**
+  - Strategic indexes on frequently queried columns
+  - Connection pooling for efficient resource usage
+  - Proper query optimization to prevent N+1 problems
+- **Frontend Optimization:**
+  - React.memo and useCallback for expensive components
+  - Code splitting and lazy loading
+  - Optimized bundle sizes with Vite
+- **Caching Strategy:**
+  - HTTP caching headers for static resources
+  - React Query for client-side caching
+
+### 5. 👥 Role-Based Architecture
+- **Multi-Role Support:** Admin, Manager, Server, Counter, Kitchen
+- **Role-Specific Interfaces:** Tailored UX for each role's responsibilities
+- **Permission Boundaries:** API endpoints restricted by role
+- **Interface Switching:** Admin can access all role interfaces
+
+### 6. 🔄 Real-Time Updates
+- **State Synchronization** - Orders sync across all connected interfaces
+- **Kitchen Display System** - Real-time order status updates
+- **Payment Flow** - Live payment status across POS interfaces
+
+### 7. 🛠️ Developer Experience Excellence
+- **🎯 Primary Development Workflow:**
+  ```bash
+  make dev     # Start everything with hot reloading
+  make backup  # Create system backups before major changes
+  make status  # Check system health
+  make help    # See all available commands
+  ```
+- **🔐 Safety Features:**
+  - Interactive scripts with confirmation prompts
+  - Automatic emergency backups before destructive operations
+  - Comprehensive error messages with resolution suggestions
+- **🐳 Container-First Development:**
+  - Consistent environments across development/production
+  - Hot reloading in development containers
+  - Multi-stage production builds for optimization
+- **📊 Monitoring & Debugging:**
+  - Comprehensive logging with structured output
+  - Real-time log monitoring (`make logs`)
+  - Health check endpoints for all services
+
+### 8. 🏗️ Clean Architecture Patterns
+- **Backend:** Standard Go project layout with internal packages
+- **Frontend:** Feature-based component organization
+- **Database:** Normalized schema with proper relationships
+- **Infrastructure:** Infrastructure as Code with Docker Compose
+
+## 🚀 Quick Development Commands
+
+Essential commands for daily development (all via Makefile):
+
+```bash
+# 🏁 Getting Started
+make dev          # Start development environment
+make status       # Check system status
+make help         # Show all available commands
+
+# 🗄️ Database Management
+make create-admin # Create admin user interactively
+make db-reset     # Reset to fresh database with seed data
+make backup       # Create complete system backup
+make restore      # Restore from backup (interactive)
+
+# 📊 Monitoring & Debugging
+make logs         # View all service logs
+make logs-backend # View backend logs only
+make logs-frontend# View frontend logs only
+
+# 🧹 Maintenance
+make down         # Stop all services
+make clean        # Clean up Docker resources (with confirmations)
+```
+
+## 🎭 Demo Accounts for Testing
+
+| Role | Username | Password | Access Level |
+|------|----------|----------|-------------|
+| **👑 Admin** | `admin` | `admin123` | Full system access + beautiful admin dashboard |
+| **🍽️ Server** | `server1` | `server123` | Dine-in orders only |
+| **💰 Counter** | `counter1` | `counter123` | All order types + payments |
+| **👨‍🍳 Kitchen** | `kitchen1` | `kitchen123` | Order preparation workflow |

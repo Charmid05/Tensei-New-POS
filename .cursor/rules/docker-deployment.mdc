@@ -1,0 +1,1151 @@
+---
+globs: Dockerfile,Dockerfile.*,docker-compose.*,*.sh,nginx.conf,.github/workflows/*,k8s/*,*.yml,*.yaml
+description: Complete Docker containerization, production deployment, and monitoring patterns for POS System
+---
+
+# 🐳 Docker & Production Deployment Guide
+
+## Container Architecture
+
+### Service Overview
+The POS system uses a multi-container architecture defined in [docker-compose.yml](mdc:docker-compose.yml):
+
+1. **postgres** - PostgreSQL database with persistent storage
+2. **backend** - Golang API server with database connectivity
+3. **frontend** - React application served via Nginx
+
+### Container Networking
+All services communicate through the `pos-network` bridge network:
+- Frontend → Backend: HTTP API calls
+- Backend → Database: PostgreSQL connection
+- External access via exposed ports
+
+## Development vs Production
+
+### Development Configuration
+Use [docker-compose.dev.yml](mdc:docker-compose.dev.yml) for development:
+```bash
+docker-compose -f docker-compose.dev.yml up
+```
+
+**Development Features:**
+- Volume mounts for live code reloading
+- Development-specific environment variables
+- Hot reloading for both frontend (Vite) and backend (Air)
+- Debug logging enabled
+
+### Production Configuration
+Use [docker-compose.yml](mdc:docker-compose.yml) for production:
+```bash
+docker-compose up -d
+```
+
+**Production Features:**
+- Optimized multi-stage builds
+- Minimal runtime containers (Alpine-based)
+- Health checks and restart policies
+- Production-ready Nginx configuration
+
+## Dockerfile Patterns
+
+### Backend Dockerfile
+Multi-stage build pattern in [backend/Dockerfile](mdc:backend/Dockerfile):
+
+```dockerfile
+# Build stage - full Go toolchain
+FROM golang:1.21-alpine AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -o main .
+
+# Production stage - minimal runtime
+FROM alpine:latest
+RUN apk --no-cache add ca-certificates
+WORKDIR /root/
+COPY --from=builder /app/main .
+EXPOSE 8080
+CMD ["./main"]
+```
+
+### Frontend Dockerfile
+Node.js build with Nginx serving in [frontend/Dockerfile](mdc:frontend/Dockerfile):
+
+```dockerfile
+# Build stage
+FROM node:18-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+COPY . .
+RUN npm run build
+
+# Production stage - Nginx
+FROM nginx:alpine AS production
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY --from=builder /app/dist /usr/share/nginx/html
+EXPOSE 3000
+CMD ["nginx", "-g", "daemon off;"]
+```
+
+## Environment Configuration
+
+### Environment Variables
+Define environment variables in `.env` file or through Docker Compose:
+
+```env
+# Database
+DB_HOST=postgres
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres123
+DB_NAME=pos_system
+
+# Backend
+PORT=8080
+GIN_MODE=release
+
+# Frontend  
+VITE_API_URL=http://localhost:8080
+```
+
+### Security Considerations
+- Use Docker secrets for sensitive data in production
+- Avoid hardcoding credentials in Dockerfiles
+- Use separate environment files for different stages
+- Rotate passwords and API keys regularly
+
+## Volume Management
+
+### Persistent Data Storage
+Database data persists using named volumes:
+```yaml
+volumes:
+  postgres_data:
+    driver: local
+    
+services:
+  postgres:
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+```
+
+### Development Volume Mounts
+Mount source code for hot reloading in development:
+```yaml
+services:
+  backend:
+    volumes:
+      - ./backend:/app
+  frontend:
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # Anonymous volume for node_modules
+```
+
+## Nginx Configuration
+
+### Reverse Proxy Setup
+Nginx configuration in [frontend/nginx.conf](mdc:frontend/nginx.conf):
+
+```nginx
+# API proxy to backend
+location /api {
+    proxy_pass http://backend:8080;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+# SPA routing for React
+location / {
+    try_files $uri $uri/ /index.html;
+}
+```
+
+### Performance Optimization
+- Gzip compression for static assets
+- Proper caching headers for assets
+- Security headers (CORS, XSS protection)
+- Health check endpoint for load balancers
+
+## Health Checks & Monitoring
+
+### Container Health Checks
+Define health checks in Docker Compose:
+```yaml
+services:
+  backend:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+      
+  frontend:
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+```
+
+### Restart Policies
+Configure appropriate restart policies:
+```yaml
+services:
+  postgres:
+    restart: unless-stopped
+  backend:
+    restart: unless-stopped
+  frontend:
+    restart: unless-stopped
+```
+
+## Database Initialization
+
+### Schema & Seed Data
+Database automatically initializes using scripts in [database/init/](mdc:database/init/):
+- [01_schema.sql](mdc:database/init/01_schema.sql) - Table structure and indexes
+- [02_seed_data.sql](mdc:database/init/02_seed_data.sql) - Sample data for development
+
+### Backup Strategies
+```bash
+# Create database backup
+docker exec pos-postgres pg_dump -U postgres pos_system > backup.sql
+
+# Restore database
+docker exec -i pos-postgres psql -U postgres pos_system < backup.sql
+```
+
+## Development Workflow
+Use the comprehensive [Makefile](mdc:Makefile) for all operations:
+```bash
+# Essential commands
+make dev          # Start development environment
+make up           # Start containers in background  
+make down         # Stop all containers
+make status       # Check service status
+```
+
+### Database Operations
+```bash
+# Interactive database management
+make create-admin # Create super admin user
+make backup       # Backup database and files
+make restore      # Restore from backup
+make db-shell     # Access PostgreSQL shell
+make db-reset     # Reset with fresh data
+```
+
+### Legacy Commands (use Makefile instead)
+```bash
+# Start all services (legacy)
+docker-compose up -d
+
+# View logs (use: make logs)
+docker-compose logs -f backend
+
+# Stop services (use: make down)
+docker-compose down
+
+# Rebuild containers (use: make rebuild)
+docker-compose up --build
+```
+
+## Production Deployment
+
+### Container Registry
+Build and push images for production deployment:
+```bash
+# Build images
+docker build -t pos-backend:latest ./backend
+docker build -t pos-frontend:latest ./frontend
+
+# Tag for registry
+docker tag pos-backend:latest your-registry/pos-backend:v1.0.0
+docker tag pos-frontend:latest your-registry/pos-frontend:v1.0.0
+
+# Push to registry
+docker push your-registry/pos-backend:v1.0.0
+docker push your-registry/pos-frontend:v1.0.0
+```
+
+### Deployment Checklist
+- [ ] Environment variables configured
+- [ ] SSL/TLS certificates installed
+- [ ] Database backups scheduled
+- [ ] Monitoring and logging configured
+- [ ] Security scanning completed
+- [ ] Load balancer configured (if needed)
+- [ ] Domain name and DNS configured
+
+## Security Best Practices
+
+### Container Security
+- Use non-root users in containers where possible
+- Keep base images updated
+- Scan images for vulnerabilities
+- Minimize attack surface (minimal base images)
+- Use specific image tags, avoid 'latest'
+
+### Network Security
+- Use internal networks for service communication
+- Expose only necessary ports
+- Implement proper firewall rules
+- Use HTTPS/TLS for external communication
+
+## Performance Optimization
+
+### Build Optimization
+- Use multi-stage builds to reduce image size
+- Leverage Docker build cache effectively
+- Use .dockerignore to exclude unnecessary files
+- Optimize layer ordering for better caching
+
+### Runtime Optimization
+- Set appropriate resource limits (CPU, memory)
+- Use init systems for proper signal handling
+- Configure log rotation to prevent disk space issues
+- Monitor resource usage and adjust limits accordingly
+
+## Troubleshooting
+
+### Common Issues
+1. **Port conflicts** - Ensure ports 3000, 8080, 5432 are available
+2. **Volume permissions** - Check file permissions for mounted volumes
+3. **Network connectivity** - Verify service communication within Docker network
+4. **Environment variables** - Validate all required env vars are set
+5. **Database connection** - Wait for database to be ready before starting backend
+
+### Debugging Commands
+```bash
+# Check container logs
+docker-compose logs [service-name]
+
+# Execute commands in container
+docker-compose exec backend sh
+docker-compose exec postgres psql -U postgres pos_system
+
+# Check network connectivity
+docker-compose exec backend wget -qO- http://postgres:5432
+
+# Inspect container details
+docker inspect pos-backend
+```
+
+## 🚀 Production Deployment Strategies
+
+### Container Registry Best Practices
+```bash
+# ✅ CORRECT: Multi-architecture builds for production
+docker buildx create --name pos-builder --use
+docker buildx build --platform linux/amd64,linux/arm64 -t pos-backend:latest ./backend --push
+
+# ✅ CORRECT: Semantic versioning for releases
+docker build -t pos-backend:1.2.3 ./backend
+docker build -t pos-backend:latest ./backend
+
+# Security scanning before deployment
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
+  aquasec/trivy image pos-backend:1.2.3
+```
+
+### Production Docker Compose
+```yaml
+# docker-compose.prod.yml - Production configuration
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init:/docker-entrypoint-initdb.d
+    secrets:
+      - db_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    
+  backend:
+    image: your-registry/pos-backend:${VERSION}
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER}
+      DB_PASSWORD_FILE: /run/secrets/db_password
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      GIN_MODE: release
+    secrets:
+      - db_password
+      - jwt_secret
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    
+  frontend:
+    image: your-registry/pos-frontend:${VERSION}
+    environment:
+      VITE_API_URL: ${API_URL}
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: '0.25'
+
+secrets:
+  db_password:
+    external: true
+    name: pos_db_password
+  jwt_secret:
+    external: true  
+    name: pos_jwt_secret
+
+volumes:
+  postgres_data:
+    driver: local
+    
+networks:
+  default:
+    driver: overlay
+    attachable: true
+```
+
+### Docker Secrets Management
+```bash
+# ✅ CORRECT: Create production secrets
+echo "your-strong-db-password" | docker secret create pos_db_password -
+echo "your-jwt-secret-key-256-bits-long" | docker secret create pos_jwt_secret -
+
+# Deploy with secrets
+docker stack deploy -c docker-compose.prod.yml pos-system
+
+# Rotate secrets (zero downtime)
+echo "new-password" | docker secret create pos_db_password_v2 -
+# Update compose file to use new secret
+docker stack deploy -c docker-compose.prod.yml pos-system
+docker secret rm pos_db_password
+```
+
+## 🏗️ CI/CD Pipeline Patterns
+
+### GitHub Actions Workflow
+```yaml
+# .github/workflows/deploy.yml
+name: Build and Deploy POS System
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_BASE: ${{ github.repository }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pos_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+        
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+    
+    - name: Run backend tests
+      run: |
+        cd backend
+        go test -v -race -coverprofile=coverage.out ./...
+        go tool cover -html=coverage.out -o coverage.html
+        
+    - name: Run frontend tests
+      run: |
+        cd frontend
+        npm ci
+        npm run test:coverage
+        
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v2
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+  build:
+    needs: [test, security]
+    runs-on: ubuntu-latest
+    outputs:
+      backend-image: ${{ steps.meta-backend.outputs.tags }}
+      frontend-image: ${{ steps.meta-frontend.outputs.tags }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
+    - name: Login to Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Extract backend metadata
+      id: meta-backend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE }}/backend
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push backend
+      uses: docker/build-push-action@v5
+      with:
+        context: ./backend
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta-backend.outputs.tags }}
+        labels: ${{ steps.meta-backend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Extract frontend metadata  
+      id: meta-frontend
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_BASE }}/frontend
+        tags: |
+          type=ref,event=branch
+          type=ref,event=pr
+          type=sha,prefix={{branch}}-
+          type=raw,value=latest,enable={{is_default_branch}}
+    
+    - name: Build and push frontend
+      uses: docker/build-push-action@v5
+      with:
+        context: ./frontend
+        platforms: linux/amd64,linux/arm64
+        push: true
+        tags: ${{ steps.meta-frontend.outputs.tags }}
+        labels: ${{ steps.meta-frontend.outputs.labels }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Deploy to production
+      run: |
+        # Replace with your deployment method (SSH, K8s, etc.)
+        echo "Deploying POS System to production..."
+        echo "Backend: ${{ needs.build.outputs.backend-image }}"
+        echo "Frontend: ${{ needs.build.outputs.frontend-image }}"
+```
+
+## 📊 Monitoring & Observability
+
+### Prometheus Monitoring Setup
+```yaml
+# monitoring/docker-compose.monitoring.yml
+version: '3.8'
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: pos-prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: pos-grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    restart: unless-stopped
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: pos-node-exporter
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    restart: unless-stopped
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: pos-postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://${DB_USER}:${DB_PASSWORD}@postgres:5432/${DB_NAME}?sslmode=disable"
+    ports:
+      - "9187:9187"
+    restart: unless-stopped
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: pos-cadvisor
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    privileged: true
+    devices:
+      - /dev/kmsg
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  grafana_data:
+```
+
+### Application Metrics in Go Backend
+```go
+// metrics/metrics.go
+package metrics
+
+import (
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promauto"
+)
+
+var (
+    OrdersCreated = promauto.NewCounterVec(
+        prometheus.CounterOpts{
+            Name: "pos_orders_created_total",
+            Help: "Total number of orders created",
+        },
+        []string{"order_type", "user_role"},
+    )
+
+    PaymentProcessed = promauto.NewCounterVec(
+        prometheus.CounterOpts{
+            Name: "pos_payments_processed_total", 
+            Help: "Total number of payments processed",
+        },
+        []string{"payment_method", "status"},
+    )
+
+    DatabaseQueries = promauto.NewHistogramVec(
+        prometheus.HistogramOpts{
+            Name: "pos_database_query_duration_seconds",
+            Help: "Database query duration",
+            Buckets: prometheus.DefBuckets,
+        },
+        []string{"query_type"},
+    )
+
+    HTTPRequestDuration = promauto.NewHistogramVec(
+        prometheus.HistogramOpts{
+            Name: "pos_http_request_duration_seconds",
+            Help: "HTTP request duration",
+            Buckets: prometheus.DefBuckets,
+        },
+        []string{"method", "path", "status_code"},
+    )
+)
+
+// Middleware for HTTP request metrics
+func PrometheusMiddleware() gin.HandlerFunc {
+    return gin.HandlerFunc(func(c *gin.Context) {
+        start := time.Now()
+        
+        c.Next()
+        
+        duration := time.Since(start).Seconds()
+        status := strconv.Itoa(c.Writer.Status())
+        
+        HTTPRequestDuration.WithLabelValues(
+            c.Request.Method,
+            c.Request.URL.Path,
+            status,
+        ).Observe(duration)
+    })
+}
+```
+
+### Logging Configuration
+```go
+// logging/logger.go
+package logging
+
+import (
+    "os"
+    "github.com/sirupsen/logrus"
+    "github.com/gin-gonic/gin"
+)
+
+func SetupLogger() *logrus.Logger {
+    logger := logrus.New()
+    
+    // JSON logging for production
+    if gin.Mode() == gin.ReleaseMode {
+        logger.SetFormatter(&logrus.JSONFormatter{
+            TimestampFormat: "2006-01-02T15:04:05.999Z07:00",
+        })
+        logger.SetLevel(logrus.InfoLevel)
+    } else {
+        logger.SetFormatter(&logrus.TextFormatter{
+            FullTimestamp: true,
+        })
+        logger.SetLevel(logrus.DebugLevel)
+    }
+    
+    logger.SetOutput(os.Stdout)
+    return logger
+}
+
+// Structured logging middleware
+func LoggingMiddleware(logger *logrus.Logger) gin.HandlerFunc {
+    return gin.HandlerFunc(func(c *gin.Context) {
+        start := time.Now()
+        
+        c.Next()
+        
+        logger.WithFields(logrus.Fields{
+            "method":      c.Request.Method,
+            "path":        c.Request.URL.Path,
+            "status":      c.Writer.Status(),
+            "duration":    time.Since(start),
+            "ip":          c.ClientIP(),
+            "user_agent":  c.Request.UserAgent(),
+            "user_id":     c.GetString("user_id"),
+        }).Info("HTTP Request")
+    })
+}
+```
+
+## 🔒 Production Security Hardening
+
+### Enhanced Dockerfile Security
+```dockerfile
+# Secure Golang Dockerfile
+FROM golang:1.21-alpine AS builder
+
+# Create non-root user for build
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+# Install security updates
+RUN apk update && apk upgrade && apk add --no-cache ca-certificates git
+
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+COPY . .
+
+# Build with security flags
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -ldflags='-w -s -extldflags "-static"' -o main .
+
+# Production stage with minimal attack surface  
+FROM alpine:3.18
+
+# Security updates and minimal tools
+RUN apk update && apk upgrade && \
+    apk add --no-cache ca-certificates && \
+    rm -rf /var/cache/apk/*
+
+# Create non-root user
+RUN addgroup -g 1001 -S appgroup && \
+    adduser -S appuser -u 1001 -G appgroup
+
+# Set up app directory
+WORKDIR /app
+COPY --from=builder --chown=appuser:appgroup /app/main .
+
+# Switch to non-root user
+USER appuser
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+
+EXPOSE 8080
+CMD ["./main"]
+```
+
+### Nginx Security Configuration
+```nginx
+# nginx.conf - Production security hardening
+user nginx;
+worker_processes auto;
+pid /var/run/nginx.pid;
+
+events {
+    worker_connections 1024;
+    use epoll;
+    multi_accept on;
+}
+
+http {
+    # Security headers
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+    add_header Referrer-Policy "no-referrer-when-downgrade" always;
+    add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" always;
+    
+    # Hide server version
+    server_tokens off;
+    
+    # Rate limiting
+    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+    limit_req_zone $binary_remote_addr zone=login:10m rate=5r/m;
+    
+    # SSL Configuration (when using HTTPS)
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers on;
+    ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256;
+    
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml text/javascript;
+    
+    server {
+        listen 80;
+        server_name localhost;
+        root /usr/share/nginx/html;
+        index index.html;
+        
+        # API proxy with rate limiting
+        location /api/v1/auth/login {
+            limit_req zone=login burst=3 nodelay;
+            proxy_pass http://backend:8080;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        
+        location /api/ {
+            limit_req zone=api burst=20 nodelay;
+            proxy_pass http://backend:8080;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+        }
+        
+        # SPA routing
+        location / {
+            try_files $uri $uri/ /index.html;
+            expires 1d;
+        }
+        
+        # Security for static assets
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+    }
+}
+```
+
+## 🚀 Kubernetes Deployment (Optional)
+
+### Kubernetes Manifests
+```yaml
+# k8s/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pos-system
+
+---
+# k8s/postgres.yaml  
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: pos-system
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+      - name: postgres
+        image: postgres:15-alpine
+        env:
+        - name: POSTGRES_DB
+          value: pos_system
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        volumeMounts:
+        - name: postgres-storage
+          mountPath: /var/lib/postgresql/data
+        ports:
+        - containerPort: 5432
+        livenessProbe:
+          exec:
+            command: ["pg_isready", "-U", "postgres"]
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command: ["pg_isready", "-U", "postgres"]
+          initialDelaySeconds: 5
+          periodSeconds: 5
+  volumeClaimTemplates:
+  - metadata:
+      name: postgres-storage
+    spec:
+      accessModes: ["ReadWriteOnce"]
+      resources:
+        requests:
+          storage: 10Gi
+
+---
+# k8s/backend.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: pos-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+      - name: backend
+        image: your-registry/pos-backend:latest
+        env:
+        - name: DB_HOST
+          value: postgres-service
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+        ports:
+        - containerPort: 8080
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+```
+
+## 📈 Performance & Scaling Patterns
+
+### Horizontal Pod Autoscaling (K8s)
+```yaml
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend-hpa
+  namespace: pos-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+```
+
+### Docker Swarm Scaling
+```bash
+# Scale services in Docker Swarm
+docker service scale pos-system_backend=3
+docker service scale pos-system_frontend=2
+
+# Rolling updates
+docker service update --image pos-backend:v1.2.3 pos-system_backend
+```
+
+## 🔧 Advanced Deployment Tools
+
+### Makefile Enhancement for Production
+```makefile
+# Production deployment commands
+.PHONY: deploy-prod deploy-staging backup-prod restore-prod
+
+deploy-prod: ## Deploy to production
+	@echo "🚀 Deploying to production..."
+	docker stack deploy -c docker-compose.prod.yml pos-system
+	@echo "✅ Production deployment complete"
+
+deploy-staging: ## Deploy to staging
+	@echo "🧪 Deploying to staging..."
+	docker-compose -f docker-compose.staging.yml up -d
+	@echo "✅ Staging deployment complete"
+
+backup-prod: ## Backup production database
+	@echo "💾 Creating production backup..."
+	docker exec $$(docker ps -q -f name=pos-postgres) pg_dump -U postgres pos_system > "backup-prod-$$(date +%Y%m%d-%H%M%S).sql"
+	@echo "✅ Production backup complete"
+
+restore-prod: ## Restore production from backup
+	@read -p "Enter backup file path: " backup; \
+	echo "🔄 Restoring production from $$backup..."; \
+	docker exec -i $$(docker ps -q -f name=pos-postgres) psql -U postgres pos_system < $$backup
+	@echo "✅ Production restore complete"
+
+health-check: ## Check production health
+	@echo "🏥 Checking system health..."
+	@curl -f http://localhost/health || echo "❌ Frontend health check failed"
+	@curl -f http://localhost:8080/health || echo "❌ Backend health check failed"
+	@echo "✅ Health checks complete"
+```

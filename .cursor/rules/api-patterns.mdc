@@ -1,0 +1,313 @@
+---
+description: RESTful API design patterns and conventions for POS System
+---
+
+# API Development Guidelines
+
+## RESTful API Design
+
+### Endpoint Conventions
+Follow the patterns established in [backend/internal/api/routes.go](mdc:backend/internal/api/routes.go):
+
+### Resource Naming
+- Use plural nouns for resources: `/api/v1/orders`, `/api/v1/products`
+- Use kebab-case for multi-word resources: `/api/v1/dining-tables`
+- Nest related resources: `/api/v1/orders/{id}/payments`
+- Use descriptive action names for non-CRUD operations: `/api/v1/orders/{id}/status`
+
+### HTTP Methods
+Standard CRUD operations:
+```
+GET    /api/v1/orders           # List all orders
+POST   /api/v1/orders           # Create new order
+GET    /api/v1/orders/{id}      # Get specific order
+PUT    /api/v1/orders/{id}      # Update entire order
+PATCH  /api/v1/orders/{id}      # Partial update
+DELETE /api/v1/orders/{id}      # Delete order
+
+# Action-specific endpoints
+PATCH  /api/v1/orders/{id}/status     # Update order status
+POST   /api/v1/orders/{id}/payments   # Add payment to order
+```
+
+## Request/Response Patterns
+
+### Standard Response Format
+Use consistent response structure from [models/models.go](mdc:backend/internal/models/models.go):
+
+```json
+{
+  "success": true,
+  "message": "Order created successfully",
+  "data": {
+    "id": "uuid-here",
+    "order_number": "ORD001",
+    // ... other fields
+  }
+}
+```
+
+### Error Response Format
+```json
+{
+  "success": false,
+  "message": "User-friendly error message",
+  "error": "error_code_for_clients"
+}
+```
+
+### Pagination Response Format
+```json
+{
+  "success": true,
+  "message": "Orders retrieved successfully",
+  "data": [...],
+  "meta": {
+    "current_page": 1,
+    "per_page": 20,
+    "total": 150,
+    "total_pages": 8
+  }
+}
+```
+
+## Authentication & Authorization
+
+### JWT Token Authentication
+Follow patterns from [middleware/auth.go](mdc:backend/internal/middleware/auth.go):
+
+### Request Headers
+```
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+Accept: application/json
+```
+
+### Role-Based Access Control
+```go
+// Public routes - no authentication
+public.POST("/auth/login", authHandler.Login)
+
+// Protected routes - authentication required
+protected.GET("/orders", orderHandler.GetOrders)
+
+// Admin routes - specific roles required
+admin.Use(middleware.RequireRoles([]string{"admin", "manager"}))
+admin.GET("/dashboard/stats", getDashboardStats)
+```
+
+## Query Parameters & Filtering
+
+### Standard Query Parameters
+```
+GET /api/v1/orders?page=1&per_page=20&status=pending&order_type=dine_in
+```
+
+### Common Parameters
+- `page` - Page number for pagination (default: 1)
+- `per_page` - Items per page (default: 20, max: 100)
+- `sort` - Sort field and direction: `sort=created_at:desc`
+- `search` - Text search across relevant fields
+- Resource-specific filters (status, type, date ranges, etc.)
+
+### Date Filtering
+```
+GET /api/v1/orders?created_after=2024-01-01&created_before=2024-12-31
+```
+
+## Error Handling
+
+### HTTP Status Codes
+Use appropriate status codes consistently:
+```
+200 OK              - Successful GET, PUT, PATCH
+201 Created         - Successful POST
+204 No Content      - Successful DELETE
+400 Bad Request     - Invalid request data
+401 Unauthorized    - Authentication required/failed  
+403 Forbidden       - Insufficient permissions
+404 Not Found       - Resource doesn't exist
+409 Conflict        - Resource conflict (duplicate, etc.)
+422 Unprocessable   - Valid JSON but business logic error
+500 Internal Error  - Server error
+```
+
+### Error Response Examples
+```go
+// Validation error
+c.JSON(http.StatusBadRequest, models.APIResponse{
+    Success: false,
+    Message: "Order must contain at least one item",
+    Error:   stringPtr("empty_order"),
+})
+
+// Resource not found
+c.JSON(http.StatusNotFound, models.APIResponse{
+    Success: false,
+    Message: "Order not found",
+    Error:   stringPtr("order_not_found"),
+})
+
+// Permission error
+c.JSON(http.StatusForbidden, models.APIResponse{
+    Success: false,
+    Message: "Insufficient permissions",
+    Error:   stringPtr("insufficient_permissions"),
+})
+```
+
+## Request Validation
+
+### Input Validation Pattern
+```go
+type CreateOrderRequest struct {
+    TableID      *uuid.UUID         `json:"table_id"`
+    CustomerName *string            `json:"customer_name"`
+    OrderType    string             `json:"order_type"`
+    Items        []CreateOrderItem  `json:"items"`
+    Notes        *string            `json:"notes"`
+}
+
+func (h *OrderHandler) CreateOrder(c *gin.Context) {
+    var req CreateOrderRequest
+    if err := c.ShouldBindJSON(&req); err != nil {
+        c.JSON(http.StatusBadRequest, models.APIResponse{
+            Success: false,
+            Message: "Invalid request body",
+            Error:   stringPtr(err.Error()),
+        })
+        return
+    }
+    
+    // Additional business logic validation
+    if len(req.Items) == 0 {
+        c.JSON(http.StatusBadRequest, models.APIResponse{
+            Success: false,
+            Message: "Order must contain at least one item",
+            Error:   stringPtr("empty_order"),
+        })
+        return
+    }
+}
+```
+
+## Database Transaction Patterns
+
+### Transaction Usage
+Use transactions for multi-table operations:
+```go
+func (h *OrderHandler) CreateOrder(c *gin.Context) {
+    tx, err := h.db.Begin()
+    if err != nil {
+        // Handle error
+        return
+    }
+    defer tx.Rollback() // Always rollback if not committed
+    
+    // Multiple database operations
+    _, err = tx.Exec("INSERT INTO orders ...")
+    if err != nil {
+        // Error will cause rollback
+        return
+    }
+    
+    _, err = tx.Exec("INSERT INTO order_items ...")
+    if err != nil {
+        return
+    }
+    
+    // Commit transaction
+    if err := tx.Commit(); err != nil {
+        // Handle commit error
+        return
+    }
+}
+```
+
+## API Documentation
+
+### Endpoint Documentation
+Document each endpoint with:
+- Purpose and description
+- Required permissions/roles
+- Request format and validation rules
+- Response format and possible status codes
+- Example requests and responses
+
+### Request/Response Examples
+```go
+// CreateOrder creates a new order
+// @Summary Create a new order
+// @Description Create a new customer order with items and table assignment
+// @Tags orders
+// @Accept json
+// @Produce json
+// @Param order body CreateOrderRequest true "Order data"
+// @Success 201 {object} APIResponse{data=Order}
+// @Failure 400 {object} APIResponse
+// @Failure 401 {object} APIResponse
+// @Router /api/v1/orders [post]
+```
+
+## Performance Considerations
+
+### Query Optimization
+- Use database indexes for frequently filtered fields
+- Implement pagination for large result sets
+- Avoid N+1 query problems with proper JOINs
+- Cache expensive computations
+
+### Response Optimization
+- Use appropriate HTTP caching headers
+- Compress responses when beneficial
+- Return only necessary fields (consider field selection)
+- Use ETags for conditional requests
+
+## Rate Limiting & Throttling
+
+### Rate Limiting Strategy
+```go
+// Implement rate limiting middleware
+func RateLimitMiddleware() gin.HandlerFunc {
+    // Rate limiting implementation
+    // Consider user-based, IP-based, or endpoint-based limits
+}
+
+// Apply to sensitive endpoints
+protected.Use(RateLimitMiddleware())
+```
+
+## API Versioning
+
+### URL Versioning
+Current API uses URL path versioning:
+```
+/api/v1/orders    # Version 1
+/api/v2/orders    # Version 2 (future)
+```
+
+### Backward Compatibility
+- Maintain backward compatibility within major versions
+- Deprecate old endpoints gracefully with proper warnings
+- Document breaking changes and migration paths
+- Support multiple versions during transition periods
+
+## Monitoring & Logging
+
+### Request Logging
+Log important API operations:
+```go
+// Log successful operations
+log.Printf("Order created: user_id=%s, order_id=%s", userID, orderID)
+
+// Log errors with context
+log.Printf("Failed to create order: user_id=%s, error=%s", userID, err.Error())
+```
+
+### Metrics Collection
+Track key metrics:
+- Request/response times
+- Error rates by endpoint
+- Authentication success/failure rates
+- Resource creation/modification rates
+- Database query performance

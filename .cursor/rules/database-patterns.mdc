@@ -1,0 +1,229 @@
+---
+globs: *.sql
+description: Database design patterns and conventions for PostgreSQL in POS System
+---
+
+# Database Development Guidelines (PostgreSQL)
+
+## Schema Design
+
+### Primary Schema
+The main database schema is defined in [database/init/01_schema.sql](mdc:database/init/01_schema.sql):
+
+### Core Tables Structure:
+1. **users** - Staff and user management with role-based access
+2. **categories** - Product categorization with sorting and colors
+3. **products** - Menu items with pricing and availability
+4. **dining_tables** - Table and seating management
+5. **orders** - Order lifecycle with status tracking
+6. **order_items** - Individual items within orders
+7. **payments** - Payment processing and history
+8. **inventory** - Stock management and tracking
+9. **order_status_history** - Audit trail for order changes
+
+## Naming Conventions
+
+### Table Names
+- Use plural snake_case: `order_items`, `dining_tables`
+- Descriptive names that clearly indicate content
+- Avoid abbreviations unless universally understood
+
+### Column Names
+- Use snake_case: `created_at`, `order_number`
+- Boolean fields start with `is_`: `is_active`, `is_occupied`
+- Timestamps end with `_at`: `created_at`, `processed_at`
+- Foreign keys follow pattern: `{table_name}_id`
+
+### Constraint Names
+- Primary keys: `{table}_pkey`
+- Foreign keys: `fk_{table}_{referenced_table}`
+- Unique constraints: `unique_{table}_{column}`
+- Check constraints: `check_{table}_{column}_{description}`
+
+## Data Types & Standards
+
+### UUID Primary Keys
+Use UUID v4 for all primary keys:
+```sql
+CREATE TABLE example_table (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    -- other columns
+);
+```
+
+### Timestamps
+Always use `TIMESTAMP WITH TIME ZONE` for time tracking:
+```sql
+created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+```
+
+### Money Values
+Use `DECIMAL(10,2)` for all monetary values:
+```sql
+price DECIMAL(10,2) NOT NULL,
+total_amount DECIMAL(10,2) NOT NULL DEFAULT 0
+```
+
+### String Fields
+- Use appropriate VARCHAR lengths based on expected content
+- Use TEXT for long content without length restrictions
+- Apply NOT NULL constraints where appropriate
+
+## Indexing Strategy
+
+### Performance Indexes
+Critical indexes defined in [database/init/01_schema.sql](mdc:database/init/01_schema.sql):
+
+```sql
+-- Query optimization indexes
+CREATE INDEX idx_orders_status ON orders(status);
+CREATE INDEX idx_orders_created_at ON orders(created_at);
+CREATE INDEX idx_orders_table_id ON orders(table_id);
+CREATE INDEX idx_order_items_order_id ON order_items(order_id);
+CREATE INDEX idx_products_category_id ON products(category_id);
+CREATE INDEX idx_products_is_available ON products(is_available);
+```
+
+### Index Guidelines
+- Index foreign key columns for JOIN performance
+- Index columns used in WHERE clauses frequently
+- Index columns used for sorting (ORDER BY)
+- Avoid over-indexing (impacts INSERT/UPDATE performance)
+- Consider composite indexes for multi-column queries
+
+## Relationships & Constraints
+
+### Foreign Key Relationships
+Maintain referential integrity with proper CASCADE rules:
+```sql
+-- Orders reference tables and users
+table_id UUID REFERENCES dining_tables(id) ON DELETE SET NULL,
+user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+
+-- Order items reference orders and products  
+order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
+product_id UUID REFERENCES products(id) ON DELETE CASCADE
+```
+
+### Check Constraints
+Use CHECK constraints for data validation:
+```sql
+-- Enum-like constraints
+role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'manager', 'cashier', 'kitchen')),
+status VARCHAR(20) NOT NULL CHECK (status IN ('pending', 'confirmed', 'preparing', 'ready', 'served', 'completed', 'cancelled')),
+
+-- Business rule constraints
+quantity INTEGER NOT NULL DEFAULT 1 CHECK (quantity > 0),
+price DECIMAL(10,2) NOT NULL CHECK (price >= 0)
+```
+
+## Triggers & Automation
+
+### Updated Timestamp Trigger
+Automatic updated_at timestamp management:
+```sql
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = CURRENT_TIMESTAMP;
+    RETURN NEW;
+END;
+$$ language 'plpgsql';
+
+-- Apply to relevant tables
+CREATE TRIGGER update_orders_updated_at 
+    BEFORE UPDATE ON orders 
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+```
+
+## Data Migration Patterns
+
+### Schema Changes
+For schema modifications:
+1. Create migration scripts with version numbers
+2. Always provide both UP and DOWN migrations
+3. Test migrations on sample data before production
+4. Use transactions for multiple related changes
+
+### Example Migration Pattern:
+```sql
+-- Migration: 001_add_customer_phone.sql
+BEGIN;
+
+ALTER TABLE orders ADD COLUMN customer_phone VARCHAR(20);
+CREATE INDEX idx_orders_customer_phone ON orders(customer_phone) 
+    WHERE customer_phone IS NOT NULL;
+
+-- Rollback plan documented
+-- ALTER TABLE orders DROP COLUMN customer_phone;
+
+COMMIT;
+```
+
+## Query Performance Patterns
+
+### Efficient JOINs
+Use appropriate JOIN types and index foreign keys:
+```sql
+-- Good: Index-optimized JOIN
+SELECT o.*, t.table_number, u.username
+FROM orders o
+LEFT JOIN dining_tables t ON o.table_id = t.id
+LEFT JOIN users u ON o.user_id = u.id
+WHERE o.status = 'pending';
+```
+
+### Pagination
+Always use LIMIT/OFFSET for large result sets:
+```sql
+SELECT * FROM orders 
+ORDER BY created_at DESC 
+LIMIT $1 OFFSET $2;
+```
+
+### Parameterized Queries
+Always use parameter placeholders to prevent SQL injection:
+```sql
+-- Good: Parameterized query
+SELECT * FROM products WHERE category_id = $1 AND is_available = $2;
+
+-- Bad: String concatenation (vulnerable to injection)
+-- SELECT * FROM products WHERE category_id = '" + categoryId + "'
+```
+
+## Backup & Recovery
+
+### Data Protection
+- Regular automated backups of critical data
+- Point-in-time recovery capability
+- Test restore procedures regularly
+- Document recovery time objectives (RTO)
+
+## Security Considerations
+
+### Access Control
+- Use least-privilege principles for database users
+- Separate users for application vs administrative access
+- Regular password rotation for database accounts
+- Network-level access restrictions
+
+### Data Encryption
+- Encrypt sensitive data at rest
+- Use SSL/TLS for database connections
+- Consider column-level encryption for PII
+- Audit access to sensitive tables
+
+## Monitoring & Maintenance
+
+### Performance Monitoring
+- Monitor slow queries and optimization opportunities
+- Track connection pool usage and limits
+- Monitor disk space and growth trends
+- Set up alerting for critical metrics
+
+### Regular Maintenance
+- Analyze and vacuum tables regularly
+- Update table statistics for query optimization
+- Monitor and manage database locks
+- Review and optimize indexes based on usage patterns

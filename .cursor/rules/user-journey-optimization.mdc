@@ -1,0 +1,682 @@
+---
+description: User journey optimization patterns for all POS roles with performance, UX, and business outcome focus
+---
+
+# 👥 User Journey Optimization & Role-Specific Patterns
+
+## 🎯 Journey-First Design Philosophy
+
+### Performance Targets by Role
+```typescript
+interface RolePerformanceTargets {
+  admin: {
+    dashboardLoad: '< 2 seconds',
+    reportGeneration: '< 5 seconds',
+    userManagement: '< 1 second per action',
+    systemOverview: '< 1.5 seconds'
+  },
+  server: {
+    orderCreation: '< 30 seconds total',
+    productSelection: '< 5 seconds per item',
+    tableAssignment: '< 3 seconds',
+    customerInteraction: 'seamless, no delays'
+  },
+  counter: {
+    paymentProcessing: '< 10 seconds',
+    orderTypeSwitch: '< 2 seconds',
+    receiptGeneration: '< 3 seconds',
+    queueManagement: 'real-time updates'
+  },
+  kitchen: {
+    statusUpdates: '< 1 second',
+    orderPrioritization: 'real-time',
+    workflowOptimization: 'continuous',
+    communicationDelay: '< 2 seconds'
+  }
+}
+```
+
+## 👑 Admin Journey Optimization
+
+### 1. Executive Dashboard Experience
+```typescript
+// ✅ ADMIN-OPTIMIZED: Executive dashboard with business intelligence
+class AdminDashboardOptimization {
+  // Intelligent data aggregation for C-level insights
+  async loadExecutiveDashboard(): Promise<ExecutiveDashboard> {
+    // Parallel data loading for instant insights
+    const [
+      realtimeMetrics,
+      financialSummary,
+      operationalHealth,
+      staffPerformance,
+      customerSatisfaction,
+      systemAlerts
+    ] = await Promise.all([
+      this.getRealtimeBusinessMetrics(), // Revenue, orders/hour, avg ticket
+      this.getFinancialSummary(), // Daily/weekly/monthly trends
+      this.getOperationalHealth(), // Kitchen efficiency, table turnover
+      this.getStaffPerformance(), // Individual and team metrics
+      this.getCustomerSatisfaction(), // Wait times, order accuracy
+      this.getSystemAlerts() // Technical and business alerts
+    ])
+
+    // Business intelligence: Automatic insights generation
+    const insights = this.generateBusinessInsights({
+      metrics: realtimeMetrics,
+      trends: financialSummary,
+      operations: operationalHealth
+    })
+
+    return {
+      kpis: this.createKPIDashboard(realtimeMetrics),
+      trends: this.createTrendAnalysis(financialSummary),
+      alerts: this.prioritizeAlerts(systemAlerts),
+      recommendations: insights.recommendations,
+      quickActions: this.generateQuickActions(insights)
+    }
+  }
+
+  // Predictive business insights
+  private generateBusinessInsights(data: DashboardData): BusinessInsights {
+    const insights: BusinessInsight[] = []
+
+    // Revenue optimization insights
+    if (data.metrics.averageTicket < data.historical.averageTicket * 0.95) {
+      insights.push({
+        type: 'revenue_optimization',
+        severity: 'medium',
+        title: 'Average Ticket Size Declining',
+        description: 'Consider implementing upselling strategies or menu optimization',
+        actionable: true,
+        quickActions: [
+          { label: 'View Menu Performance', action: 'navigate_to_menu_analytics' },
+          { label: 'Staff Upselling Training', action: 'create_training_task' }
+        ]
+      })
+    }
+
+    // Operational efficiency insights
+    if (data.operations.kitchenEfficiency < 0.85) {
+      insights.push({
+        type: 'operational_efficiency',
+        severity: 'high',
+        title: 'Kitchen Efficiency Below Target',
+        description: 'Kitchen preparation times are impacting customer satisfaction',
+        actionable: true,
+        quickActions: [
+          { label: 'View Kitchen Analytics', action: 'navigate_to_kitchen_dashboard' },
+          { label: 'Optimize Kitchen Workflow', action: 'open_workflow_optimizer' }
+        ]
+      })
+    }
+
+    return {
+      insights,
+      recommendations: this.generateActionableRecommendations(insights),
+      predictedImpact: this.calculatePredictedBusinessImpact(insights)
+    }
+  }
+}
+
+// Admin interface switching optimization
+class AdminInterfaceSwitching {
+  // Seamless role interface switching with context preservation
+  async switchToRoleInterface(targetRole: UserRole, preserveContext: boolean = true): Promise<void> {
+    // Pre-load target interface data
+    const targetData = await this.preloadRoleData(targetRole)
+    
+    if (preserveContext) {
+      // Preserve admin context for quick return
+      this.preserveAdminContext({
+        currentDashboard: this.getCurrentDashboardState(),
+        activeReports: this.getActiveReports(),
+        notifications: this.getPendingNotifications()
+      })
+    }
+
+    // Optimized transition with loading states
+    this.showTransitionLoading(`Switching to ${targetRole} interface...`)
+    
+    // Load role-specific optimizations
+    const roleOptimizations = await this.loadRoleOptimizations(targetRole)
+    
+    // Smooth transition with preserved user experience
+    this.transitionToRoleInterface(targetRole, targetData, roleOptimizations)
+  }
+
+  // Role-specific data preloading
+  private async preloadRoleData(role: UserRole): Promise<RoleData> {
+    const preloadStrategies = {
+      server: () => Promise.all([
+        this.menuService.getAvailableProducts(),
+        this.tableService.getAvailableTables(),
+        this.orderService.getActiveOrders()
+      ]),
+      counter: () => Promise.all([
+        this.orderService.getPendingPayments(),
+        this.paymentService.getPaymentMethods(),
+        this.customerService.getLoyaltyPrograms()
+      ]),
+      kitchen: () => Promise.all([
+        this.kitchenService.getActiveOrders(),
+        this.kitchenService.getPreparationQueue(),
+        this.kitchenService.getKitchenStations()
+      ])
+    }
+
+    return preloadStrategies[role]?.() || Promise.resolve(null)
+  }
+}
+```
+
+## 🍽️ Server Journey Optimization
+
+### 1. Lightning-Fast Order Creation
+```typescript
+// ✅ SERVER-OPTIMIZED: Fastest possible order creation workflow
+class ServerOrderOptimization {
+  // Intelligent product suggestions based on context
+  async optimizeProductSelection(context: ServerContext): Promise<ProductSuggestions> {
+    const suggestions = await Promise.all([
+      this.getPopularItems(), // Most ordered items today
+      this.getSeasonalRecommendations(), // Weather/season based
+      this.getTableSpecificSuggestions(context.table_id), // Table history
+      this.getTimeBasedSuggestions(), // Lunch vs dinner items
+      this.getInventoryOptimizedItems() // Items needing to move
+    ])
+
+    return {
+      quickAccess: suggestions[0].slice(0, 8), // 8 most popular for instant access
+      recommended: this.mergeAndRankSuggestions(suggestions),
+      categories: await this.getOptimizedCategories(),
+      searchSuggestions: await this.getIntelligentSearchSuggestions()
+    }
+  }
+
+  // Voice-optimized order taking
+  async enableVoiceOrderAssistance(): Promise<VoiceAssistant> {
+    return {
+      startListening: () => {
+        // "Large pepperoni pizza, extra cheese, side of wings"
+        this.voiceRecognition.listen({
+          grammar: 'restaurant_menu',
+          continuous: true,
+          confidenceThreshold: 0.8
+        })
+      },
+
+      processVoiceOrder: async (transcript: string) => {
+        // AI-powered menu item extraction
+        const extractedItems = await this.nlpService.extractMenuItems(transcript)
+        
+        // Confidence-based confirmation
+        return extractedItems.map(item => ({
+          product: item.product,
+          quantity: item.quantity,
+          confidence: item.confidence,
+          needsConfirmation: item.confidence < 0.9,
+          suggestedAlternatives: item.confidence < 0.7 ? item.alternatives : []
+        }))
+      },
+
+      provideFeedback: (feedback: VoiceFeedback) => {
+        // "I heard 'large pepperoni pizza', is that correct?"
+        this.speakConfirmation(feedback)
+      }
+    }
+  }
+
+  // Gesture-based order modification
+  async enableGestureControls(): Promise<GestureController> {
+    return {
+      // Swipe gestures for quantity adjustment
+      onSwipeRight: (item: OrderItem) => this.incrementQuantity(item),
+      onSwipeLeft: (item: OrderItem) => this.decrementQuantity(item),
+      
+      // Pinch to remove items
+      onPinch: (item: OrderItem) => this.removeItemWithConfirmation(item),
+      
+      // Long press for customization
+      onLongPress: (item: OrderItem) => this.showCustomizationOptions(item),
+      
+      // Double tap for quick add
+      onDoubleTap: (product: Product) => this.quickAdd(product)
+    }
+  }
+
+  // Predictive text for special instructions
+  async generateInstructionPredictions(partialText: string): Promise<string[]> {
+    const commonInstructions = await this.getCommonInstructions()
+    const contextualPredictions = await this.getContextualPredictions(partialText)
+    
+    return [
+      ...contextualPredictions.slice(0, 3),
+      ...commonInstructions
+        .filter(instruction => instruction.startsWith(partialText.toLowerCase()))
+        .slice(0, 5)
+    ]
+  }
+}
+
+// Server-specific UI optimizations
+class ServerUIOptimization {
+  // Large touch targets for tablet use
+  generateTouchOptimizedUI(): ServerUIConfig {
+    return {
+      buttonSize: {
+        primary: '60px', // Easy finger tap
+        secondary: '48px',
+        icon: '44px' // Apple's minimum recommended
+      },
+      
+      spacing: {
+        between_products: '12px',
+        section_margins: '24px',
+        safe_area: '16px' // Away from screen edges
+      },
+      
+      typography: {
+        product_names: '18px', // Easy to read while moving
+        prices: '16px bold',
+        descriptions: '14px',
+        min_line_height: '1.4'
+      },
+      
+      interaction: {
+        tap_feedback: 'haptic + visual',
+        loading_states: 'skeleton_shimmer',
+        error_display: 'inline_toast',
+        success_confirmation: 'checkmark_animation'
+      }
+    }
+  }
+
+  // Context-aware interface adaptation
+  async adaptToEnvironment(context: EnvironmentContext): Promise<UIAdaptation> {
+    const adaptations = {
+      lighting: {
+        bright: { theme: 'light', contrast: 'high' },
+        dim: { theme: 'dark', contrast: 'enhanced' },
+        changing: { theme: 'auto', contrast: 'adaptive' }
+      },
+      
+      noise_level: {
+        quiet: { audio_feedback: 'subtle' },
+        normal: { audio_feedback: 'standard' },
+        loud: { audio_feedback: 'enhanced', visual_feedback: 'prominent' }
+      },
+      
+      rush_period: {
+        true: { layout: 'simplified', animations: 'reduced', shortcuts: 'enabled' },
+        false: { layout: 'full', animations: 'smooth', shortcuts: 'optional' }
+      }
+    }
+
+    return this.applyAdaptations(adaptations, context)
+  }
+}
+```
+
+## 💰 Counter Journey Optimization
+
+### 1. Multi-Modal Payment Excellence
+```typescript
+// ✅ COUNTER-OPTIMIZED: Seamless payment processing for all order types
+class CounterPaymentOptimization {
+  // Intelligent payment method selection
+  async optimizePaymentMethods(order: Order, customer: Customer): Promise<PaymentOptimization> {
+    const recommendations = await this.analyzePaymentPreferences({
+      order_total: order.total_amount,
+      customer_history: customer?.payment_history,
+      current_promotions: await this.getActivePromotions(),
+      loyalty_benefits: await this.getLoyaltyBenefits(customer),
+      time_of_day: new Date().getHours()
+    })
+
+    return {
+      recommended_method: recommendations.primary,
+      alternatives: recommendations.alternatives,
+      
+      // Smart suggestions
+      split_payment_options: recommendations.split_options,
+      tip_suggestions: this.calculateOptimalTipSuggestions(order.total_amount),
+      loyalty_redemptions: recommendations.loyalty_opportunities,
+      
+      // UX optimizations
+      quick_amounts: this.generateQuickAmountButtons(order.total_amount),
+      keyboard_shortcuts: this.getPaymentKeyboardShortcuts(),
+      receipt_options: this.getReceiptPreferences(customer)
+    }
+  }
+
+  // Lightning-fast receipt generation
+  async generateOptimizedReceipt(payment: Payment): Promise<ReceiptGeneration> {
+    // Parallel processing for speed
+    const [
+      receiptData,
+      loyaltyUpdate,
+      businessAnalytics,
+      customerCommunication
+    ] = await Promise.all([
+      this.formatReceiptData(payment),
+      this.updateLoyaltyPoints(payment.customer_id, payment.amount),
+      this.recordBusinessMetrics(payment),
+      this.prepareCustomerCommunication(payment)
+    ])
+
+    // Smart receipt customization
+    const receiptCustomization = await this.customizeReceipt({
+      customer_preferences: payment.customer?.receipt_preferences,
+      business_branding: await this.getBrandingElements(),
+      promotional_messages: await this.getContextualPromotions(payment),
+      next_visit_incentives: await this.generateRetentionOffers(payment.customer_id)
+    })
+
+    return {
+      receipt: this.combineReceiptElements(receiptData, receiptCustomization),
+      delivery_methods: this.determineDeliveryMethods(payment.customer),
+      follow_up_actions: this.generateFollowUpActions(payment)
+    }
+  }
+
+  // Queue management optimization
+  async optimizeCounterQueue(): Promise<QueueOptimization> {
+    const queueAnalysis = await this.analyzeCurrentQueue()
+    
+    return {
+      // Intelligent order routing
+      order_routing: {
+        express_line: queueAnalysis.simple_orders, // < 3 items, card payment
+        full_service: queueAnalysis.complex_orders, // Large orders, special requests
+        pickup_only: queueAnalysis.pickup_orders // Pre-paid online orders
+      },
+      
+      // Staff allocation suggestions
+      staffing_recommendations: {
+        current_efficiency: queueAnalysis.efficiency_score,
+        suggested_stations: queueAnalysis.optimal_station_count,
+        cross_training_opportunities: queueAnalysis.skill_gaps
+      },
+      
+      // Customer communication
+      wait_time_estimates: {
+        express: this.calculateExpressWaitTime(),
+        full_service: this.calculateFullServiceWaitTime(),
+        accuracy_confidence: queueAnalysis.prediction_confidence
+      }
+    }
+  }
+}
+
+// Counter-specific multi-tasking optimization
+class CounterMultitaskingOptimization {
+  // Context switching between order types
+  async enableSeamlessOrderTypeSwitch(): Promise<OrderTypeSwitcher> {
+    return {
+      // Maintain context across switches
+      preserveContext: (currentOrder: PartialOrder, targetType: OrderType) => {
+        const adaptedOrder = this.adaptOrderToType(currentOrder, targetType)
+        
+        return {
+          preserved_items: adaptedOrder.compatible_items,
+          modified_items: adaptedOrder.modified_items,
+          additional_fields: adaptedOrder.required_fields,
+          ui_adaptations: adaptedOrder.ui_changes
+        }
+      },
+
+      // Quick switch shortcuts
+      keyboard_shortcuts: {
+        'Alt+D': 'switch_to_dine_in',
+        'Alt+T': 'switch_to_takeout', 
+        'Alt+L': 'switch_to_delivery',
+        'Alt+P': 'switch_to_phone_order'
+      },
+
+      // Visual transition optimization
+      transition_animation: 'slide_with_context_preservation',
+      loading_state: 'skeleton_with_preserved_data',
+      error_recovery: 'restore_previous_context'
+    }
+  }
+
+  // Parallel order processing
+  async enableParallelOrderHandling(): Promise<ParallelProcessor> {
+    return {
+      // Handle multiple orders simultaneously
+      concurrent_orders: {
+        max_concurrent: 3, // Based on cognitive load research
+        context_switching_delay: 200, // ms buffer for mental switching
+        visual_indicators: 'color_coded_tabs',
+        keyboard_navigation: 'tab_cycling'
+      },
+
+      // Smart notifications
+      notification_management: {
+        priority_system: 'payment_ready > order_complete > new_order',
+        consolidation_rules: 'group_similar_events',
+        quiet_hours: 'reduce_non_critical_notifications',
+        escalation_policy: 'manager_alert_after_5min'
+      }
+    }
+  }
+}
+```
+
+## 👨‍🍳 Kitchen Journey Optimization
+
+### 1. Intelligent Workflow Orchestration
+```typescript
+// ✅ KITCHEN-OPTIMIZED: Real-time workflow optimization with AI assistance
+class KitchenWorkflowIntelligence {
+  // AI-powered order prioritization
+  async optimizeKitchenWorkflow(): Promise<WorkflowOptimization> {
+    const currentState = await this.getKitchenCurrentState()
+    const orderComplexity = await this.analyzeOrderComplexity()
+    const staffCapacity = await this.assessStaffCapacity()
+    
+    // Machine learning for optimal sequencing
+    const optimizedSequence = await this.mlOrderSequencer.optimize({
+      pending_orders: currentState.pending_orders,
+      preparation_times: orderComplexity.estimated_times,
+      staff_availability: staffCapacity.current_capacity,
+      equipment_status: currentState.equipment_availability,
+      
+      // Business constraints
+      customer_wait_targets: this.getWaitTimeTargets(),
+      vip_priorities: currentState.vip_orders,
+      delivery_deadlines: currentState.delivery_orders
+    })
+
+    return {
+      recommended_sequence: optimizedSequence.order_sequence,
+      parallel_preparation: optimizedSequence.parallel_opportunities,
+      resource_allocation: optimizedSequence.staff_assignments,
+      time_estimates: optimizedSequence.completion_predictions,
+      
+      // Proactive insights
+      bottleneck_warnings: optimizedSequence.potential_bottlenecks,
+      efficiency_score: optimizedSequence.predicted_efficiency,
+      customer_impact: optimizedSequence.customer_satisfaction_impact
+    }
+  }
+
+  // Real-time kitchen coaching
+  async provideRealTimeCoaching(): Promise<KitchenCoach> {
+    return {
+      // Preparation guidance
+      step_by_step_guidance: async (order: KitchenOrder) => {
+        const recipe = await this.getOptimizedRecipe(order)
+        const chef_level = await this.getChefSkillLevel()
+        
+        return this.adaptGuidanceToSkill(recipe, chef_level)
+      },
+
+      // Timing optimization
+      timing_alerts: {
+        prep_start_warnings: '2min before optimal start time',
+        cooking_reminders: 'stage-based timer alerts',
+        plating_readiness: 'when all components ready',
+        service_window: 'optimal serving temperature window'
+      },
+
+      // Quality assurance
+      quality_checkpoints: {
+        visual_inspection: 'AI-powered image analysis for plating',
+        temperature_monitoring: 'smart probe integration',
+        portion_validation: 'weight-based portion control',
+        completion_verification: 'checklist completion tracking'
+      }
+    }
+  }
+
+  // Intelligent communication system
+  async enableSmartKitchenCommunication(): Promise<CommunicationSystem> {
+    return {
+      // Contextual messaging
+      smart_notifications: {
+        server_updates: 'automatic ETA updates to servers',
+        customer_alerts: 'delay notifications with alternatives',
+        management_reports: 'efficiency and issue summaries',
+        cross_station_coordination: 'synchronized preparation alerts'
+      },
+
+      // Voice-activated controls
+      voice_commands: {
+        status_updates: '"Order 123 ready for pickup"',
+        requests_help: '"Need assistance at grill station"',
+        inventory_alerts: '"Running low on chicken"',
+        quality_issues: '"Hold order 456 - refire needed"'
+      },
+
+      // Visual communication
+      display_optimization: {
+        color_coding: 'priority and status color system',
+        progress_indicators: 'visual preparation progress bars',
+        station_coordination: 'cross-station dependency visualization',
+        urgency_signals: 'escalating visual alerts for delayed orders'
+      }
+    }
+  }
+
+  // Predictive kitchen analytics
+  async generatePredictiveInsights(): Promise<KitchenPredictiveAnalytics> {
+    const historicalData = await this.getKitchenHistoricalData()
+    const currentTrends = await this.getCurrentTrends()
+    
+    return {
+      // Preparation time predictions
+      prep_time_forecasting: {
+        individual_orders: this.predictOrderPreparationTime,
+        batch_optimization: this.predictBatchCookingOpportunities,
+        rush_period_planning: this.predictRushPeriodCapacity,
+        staff_scheduling: this.predictOptimalStaffLevels
+      },
+
+      // Quality predictions
+      quality_risk_assessment: {
+        ingredient_freshness: this.predictIngredientOptimalUsage,
+        equipment_maintenance: this.predictEquipmentMaintenanceNeeds,
+        recipe_consistency: this.predictQualityDeviations,
+        customer_satisfaction: this.predictCustomerSatisfactionImpact
+      },
+
+      // Business impact forecasting
+      business_impact_predictions: {
+        revenue_optimization: this.predictRevenueImpactOfEfficiency,
+        cost_reduction: this.predictCostSavingOpportunities,
+        customer_retention: this.predictCustomerRetentionImpact,
+        staff_satisfaction: this.predictStaffSatisfactionImpact
+      }
+    }
+  }
+}
+```
+
+## 🔄 Cross-Journey Integration Patterns
+
+### 1. Seamless Handoff Optimization
+```typescript
+// ✅ INTEGRATION: Seamless data flow between all user journeys
+class CrossJourneyIntegration {
+  // Real-time state synchronization
+  async synchronizeUserJourneys(): Promise<JourneySyncManager> {
+    return {
+      // Order lifecycle synchronization
+      order_handoffs: {
+        server_to_kitchen: {
+          data_transfer: 'complete_order_context',
+          timing_optimization: 'immediate_kitchen_notification',
+          error_handling: 'bidirectional_communication'
+        },
+        
+        kitchen_to_counter: {
+          data_transfer: 'completion_status_with_quality_notes',
+          timing_optimization: 'proactive_payment_preparation',
+          error_handling: 'automatic_status_rollback'
+        },
+        
+        counter_to_admin: {
+          data_transfer: 'financial_and_operational_metrics',
+          timing_optimization: 'real_time_dashboard_updates',
+          error_handling: 'data_consistency_verification'
+        }
+      },
+
+      // Context preservation across roles
+      context_handoffs: {
+        admin_to_role_switch: 'preserve_oversight_context',
+        emergency_escalation: 'full_context_transfer_to_management',
+        shift_changes: 'comprehensive_state_transfer'
+      },
+
+      // Performance monitoring across journeys
+      journey_performance: {
+        end_to_end_tracking: 'customer_order_journey_timing',
+        bottleneck_detection: 'cross_role_workflow_analysis',
+        optimization_suggestions: 'multi_role_efficiency_improvements'
+      }
+    }
+  }
+
+  // Intelligent notification routing
+  async createIntelligentNotificationSystem(): Promise<NotificationRouter> {
+    return {
+      // Context-aware routing
+      route_notification: (notification: Notification, context: SystemContext) => {
+        const routing = this.calculateOptimalRouting(notification, context)
+        
+        return {
+          primary_recipients: routing.immediate_action_required,
+          secondary_recipients: routing.awareness_only,
+          escalation_chain: routing.escalation_sequence,
+          delivery_methods: routing.optimal_delivery_channels
+        }
+      },
+
+      // Intelligent aggregation
+      aggregate_notifications: (notifications: Notification[]) => {
+        return {
+          grouped_by_context: this.groupRelatedNotifications(notifications),
+          prioritized_by_business_impact: this.prioritizeByBusinessImpact(notifications),
+          optimized_for_attention: this.optimizeForUserAttention(notifications)
+        }
+      },
+
+      // Feedback loop optimization
+      notification_effectiveness: {
+        track_response_times: 'measure_action_completion_speed',
+        measure_attention_impact: 'cognitive_load_assessment',
+        optimize_delivery_timing: 'learn_optimal_notification_windows'
+      }
+    }
+  }
+}
+```
+
+This user journey optimization framework ensures each role has a perfectly tuned experience while maintaining seamless integration across the entire POS system. The patterns focus on real business outcomes, user satisfaction, and operational efficiency.
+
+<function_calls>
+<invoke name="todo_write">
+<parameter name="merge">true

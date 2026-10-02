@@ -1,0 +1,146 @@
+---
+globs: *.go,go.mod,go.sum
+description: Golang backend development patterns and conventions for POS System
+---
+
+# Backend Development Guidelines (Golang)
+
+## Code Organization
+
+### Package Structure
+Follow the [backend/internal/](mdc:backend/internal/) package layout:
+- `models/` - Data structures and DTOs
+- `handlers/` - HTTP request handlers  
+- `middleware/` - HTTP middleware functions
+- `database/` - Database connection and utilities
+- `api/` - Route definitions and setup
+- `utils/` - Shared utility functions
+
+### Handler Pattern
+All handlers follow the pattern in [handlers/orders.go](mdc:backend/internal/handlers/orders.go):
+
+```go
+type OrderHandler struct {
+    db *sql.DB
+}
+
+func NewOrderHandler(db *sql.DB) *OrderHandler {
+    return &OrderHandler{db: db}
+}
+
+func (h *OrderHandler) GetOrders(c *gin.Context) {
+    // Implementation
+}
+```
+
+## Database Operations
+
+### Raw SQL Usage
+- Use parameterized queries to prevent SQL injection
+- Follow the patterns in [handlers/orders.go](mdc:backend/internal/handlers/orders.go) for database operations
+- Always handle `sql.ErrNoRows` explicitly
+- Use transactions for multi-table operations
+
+### Example Query Pattern:
+```go
+func (h *Handler) getRecord(id uuid.UUID) (*Model, error) {
+    var record Model
+    query := `SELECT id, field1, field2 FROM table WHERE id = $1`
+    
+    err := h.db.QueryRow(query, id).Scan(&record.ID, &record.Field1, &record.Field2)
+    if err == sql.ErrNoRows {
+        return nil, fmt.Errorf("record not found")
+    }
+    if err != nil {
+        return nil, fmt.Errorf("database error: %w", err)
+    }
+    
+    return &record, nil
+}
+```
+
+## Authentication & Security
+
+### JWT Middleware
+Use the authentication middleware from [middleware/auth.go](mdc:backend/internal/middleware/auth.go):
+- Protected routes must use `authMiddleware`
+- Role-based access with `RequireRoles([]string{"admin", "manager"})`
+- Extract user info with `GetUserFromContext(c)`
+
+### Error Handling
+Follow the API response pattern from [models/models.go](mdc:backend/internal/models/models.go):
+
+```go
+c.JSON(http.StatusBadRequest, models.APIResponse{
+    Success: false,
+    Message: "User-friendly error message",
+    Error:   stringPtr("error_code"),
+})
+```
+
+## API Endpoints
+
+### RESTful Design
+Follow REST conventions as shown in [api/routes.go](mdc:backend/internal/api/routes.go):
+- `GET /api/v1/orders` - List resources
+- `POST /api/v1/orders` - Create resource  
+- `GET /api/v1/orders/:id` - Get single resource
+- `PUT /api/v1/orders/:id` - Update entire resource
+- `PATCH /api/v1/orders/:id/status` - Partial update
+- `DELETE /api/v1/orders/:id` - Delete resource
+
+### Response Format
+All API responses use the standard format from [models/models.go](mdc:backend/internal/models/models.go):
+
+```go
+type APIResponse struct {
+    Success bool        `json:"success"`
+    Message string      `json:"message"`
+    Data    interface{} `json:"data,omitempty"`
+    Error   *string     `json:"error,omitempty"`
+}
+```
+
+## Performance Best Practices
+
+### Database Connections
+- Use connection pooling as configured in [database/connection.go](mdc:backend/internal/database/connection.go)
+- Set appropriate connection limits and timeouts
+- Always close rows and statements
+
+### Query Optimization
+- Use indexes for frequently queried columns (see [database/init/01_schema.sql](mdc:database/init/01_schema.sql))
+- Avoid N+1 queries by using JOINs or batch loading
+- Implement pagination for large result sets
+
+## Error Handling
+
+### Database Errors
+- Always wrap database errors with context
+- Handle connection errors gracefully
+- Use the `IsConnectionError` helper from [database/connection.go](mdc:backend/internal/database/connection.go)
+
+### HTTP Errors
+- Return appropriate HTTP status codes
+- Provide clear, actionable error messages
+- Don't expose internal system details to clients
+
+## Testing Guidelines
+
+### Unit Tests
+- Test handlers with mock database connections
+- Test middleware functions independently
+- Focus on business logic and edge cases
+
+### Integration Tests
+- Test complete API endpoints
+- Use test database with proper cleanup
+- Test authentication and authorization flows
+
+## Logging
+
+### Structured Logging
+- Use Gin's built-in logging middleware
+- Log important business events (orders created, payments processed)
+- Include request IDs for tracing
+- Don't log sensitive information (passwords, tokens)
